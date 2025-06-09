@@ -4,11 +4,22 @@ import pandas as pd
 def preprocess_old_csv(csv_path):
     df = pd.read_csv(csv_path)
     # eliminar la última columna
-    if df.shape[1] > 0:
-        df = df.iloc[:, :-1]
+    # if df.shape[1] > 0:
+    #     df = df.iloc[:, :-1]
+    dni_column = 'Customer.Has.Dni..Yes...No.'
+    if dni_column in df.columns:
+        df.drop(columns=[dni_column], inplace=True)
     # eliminar primera fila (nombres de features)
-    if not df.empty:
-        df = df.iloc[1:]
+
+    # if not df.empty:
+    #     df = df.iloc[1:]
+    
+    if df.shape[0] > 0:
+        first_row = df.iloc[0].astype(str).str.strip().str.lower().tolist()
+        col_names = df.columns.str.strip().str.lower().tolist()
+        if first_row == col_names:
+            df = df.iloc[1:]
+
     # sacar las comillas de los datos
     df = df.replace('"', '', regex=True)
     return df
@@ -28,6 +39,12 @@ def unite_usuarios(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
 
     # Concatenar todos: 2020, 2021, 2022, 2023, 2024
     df_combined = pd.concat(dfs_old + [df_2024], ignore_index=True)
+
+    # ordenar por fecha_alta
+    df_combined['fecha_alta'] = pd.to_datetime(df_combined['fecha_alta'], errors='coerce')
+    df_combined.sort_values(by='fecha_alta', inplace=True)
+    df_combined.reset_index(drop=True, inplace=True)
+
 
     df_cut, eliminated = cut_users(df_combined, '2024-08-31')
     # df_combined.drop_duplicates(inplace=True)
