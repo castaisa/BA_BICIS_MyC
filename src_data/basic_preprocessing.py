@@ -17,17 +17,19 @@ def unite_usuarios(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
     # Procesar archivos antiguos
     dfs_old = [preprocess_old_csv(f) for f in [csv_2023, csv_2022, csv_2021, csv_2020]]
 
-    # Procesar 2024
     df_2024 = pd.read_csv(csv_2024)
-    new_columns = df_2024.iloc[0].tolist()
-    df_2024 = df_2024.iloc[1:]
-    df_2024.columns = new_columns
+    new_columns = df_2024.columns.tolist()
+
+    # print("df 2024: ", df_2024.head(3))
 
     # Asignar columnas a los antiguos
     for i in range(len(dfs_old)):
         dfs_old[i].columns = new_columns
 
     # Concatenar todos: 2020, 2021, 2022, 2023, 2024
-    df_combined = pd.concat(dfs_old + [df_2024], ignore_index=True)
-    df_combined.drop_duplicates(inplace=True)
+    df_combined = pd.concat([df_2024] + dfs_old, ignore_index=True)
+    # df_combined.drop_duplicates(inplace=True)
+    # print("df_combined: ", df_combined.head(3))
     return df_combined
+
+def 
