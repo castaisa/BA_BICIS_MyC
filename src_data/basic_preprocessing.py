@@ -69,7 +69,7 @@ def cut_users(df, fecha_limite):
 
 
 #Concatenar los datsets de '20 '21 '22 '23 y '24
-def concat_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
+def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
     """
     Concatenates multiple CSV files containing trip data into a single DataFrame.
     
@@ -89,6 +89,43 @@ def concat_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
     df_2023 = pd.read_csv(csv_2023)
     df_2024 = pd.read_csv(csv_2024)
 
+    #A todos menos 2024 se les saca la primera columna """""
+    df_2020 = df_2020.iloc[:, 1:]
+    df_2021 = df_2021.iloc[:, 1:]
+    df_2022 = df_2022.iloc[:, 1:]
+    df_2023 = df_2023.iloc[:, 1:]
+
+    #a 2021 tambien le saco la ultima
+    df_2021 = df_2021.iloc[:, :-1]
+
+    #A 2022 le cambio el nobre de la columna Género a género
+    df_2022.rename(columns={'Género': 'género'}, inplace=True)
+
+    #A 2024 tambien
+    df_2024.rename(columns={'genero': 'género'}, inplace=True)
+    df_2024.rename(columns={'id_recorrido': 'Id_recorrido'}, inplace=True)
+
+    #A esos mismos datasets, se les saca BAEcobici del id, la estacion y el usuario
+    df_2020['Id_recorrido'] = df_2020['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
+    df_2021['Id_recorrido'] = df_2021['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
+    df_2022['Id_recorrido'] = df_2022['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
+    df_2023['Id_recorrido'] = df_2023['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
+
+    df_2020['id_estacion_origen'] = df_2020['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
+    df_2021['id_estacion_origen'] = df_2021['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
+    df_2022['id_estacion_origen'] = df_2022['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
+    df_2023['id_estacion_origen'] = df_2023['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
+
+    df_2020['id_estacion_destino'] = df_2020['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
+    df_2021['id_estacion_destino'] = df_2021['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
+    df_2022['id_estacion_destino'] = df_2022['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
+    df_2023['id_estacion_destino'] = df_2023['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
+
+    df_2020['id_usuario'] = df_2020['id_usuario'].str.replace('BAEcobici', '', regex=False)
+    df_2021['id_usuario'] = df_2021['id_usuario'].str.replace('BAEcobici', '', regex=False)
+    df_2022['id_usuario'] = df_2022['id_usuario'].str.replace('BAEcobici', '', regex=False)
+    df_2023['id_usuario'] = df_2023['id_usuario'].str.replace('BAEcobici', '', regex=False)
+    
     # Combine the DataFrames
     df_combined = pd.concat([df_2020, df_2021, df_2022, df_2023, df_2024], ignore_index=True)
     
