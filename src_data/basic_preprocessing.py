@@ -145,7 +145,6 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
     csv_2022 (str): Path to the CSV file for the year 2022.
     csv_2023 (str): Path to the CSV file for the year 2023.
     csv_2024 (str): Path to the CSV file for the year 2024.
-    
     Returns:
     pd.DataFrame: A cleaned DataFrame containing the combined trip data without ghost columns.
     """
@@ -164,15 +163,25 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
     df_2023 = pd.read_csv(csv_2023, **read_csv_params)
     df_2024 = pd.read_csv(csv_2024, **read_csv_params)
 
+    # Fix 2021 dataset gender columns issue
+    if 'género' in df_2021.columns and 'Género' in df_2021.columns:
+            # Combine the two gender columns, taking non-null values from either
+            # Handle both NaN and 'NA' string values
+            mask_genero_empty = (df_2021['género'].isna()) | (df_2021['género'] == 'NA') | (df_2021['género'] == '')
+            mask_genero_cap_valid = (df_2021['Género'].notna()) & (df_2021['Género'] != 'NA') & (df_2021['Género'] != '')
+            
+            df_2021.loc[mask_genero_empty & mask_genero_cap_valid, 'género'] = df_2021.loc[mask_genero_empty & mask_genero_cap_valid, 'Género']
+            df_2021.drop(columns=['Género'], inplace=True)
+
+    #cortar el dataset de 2024 hasta el 31 de agosto inclusive
+    df_2024['fecha_origen_recorrido'] = pd.to_datetime(df_2024['fecha_origen_recorrido'], errors='coerce')
+    df_2024 = df_2024[df_2024['fecha_origen_recorrido'].dt.date <= pd.to_datetime('2024-08-31').date()]
+
     # Eliminar columnas no deseadas (primera columna para años 2020-2023)
     dfs_to_trim = [df_2020, df_2021, df_2022, df_2023]
     for df in dfs_to_trim:
         if len(df.columns) > 0:
             df.drop(df.columns[0], axis=1, inplace=True)
-
-    # Eliminar última columna adicional de 2021 si existe
-    if len(df_2021.columns) > 0:
-        df_2021 = df_2021.iloc[:, :-1]
 
     # Estandarización de nombres de columnas
     rename_dict = {
