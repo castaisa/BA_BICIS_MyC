@@ -67,86 +67,61 @@ def cut_users(df, fecha_limite):
 
     return df, eliminated_rows
 
-
-#Concatenar los datsets de '20 '21 '22 '23 y '24
-# def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
-#     """
-#     Concatenates multiple CSV files containing trip data into a single DataFrame.
+def cut_recorridos(df, fecha_limite):
+    """
+    Corta el DataFrame de recorridos hasta una fecha límite específica.
     
-#     Parameters:
-#     csv_2020 (str): Path to the CSV file for the year 2020.
-#     csv_2021 (str): Path to the CSV file for the year 2021.
-#     csv_2022 (str): Path to the CSV file for the year 2022.
-#     csv_2023 (str): Path to the CSV file for the year 2023.
-#     csv_2024 (str): Path to the CSV file for the year 2024.
+    Parameters:
+    df (pd.DataFrame): DataFrame de recorridos
+    fecha_limite (str or datetime): Fecha límite hasta la cual mantener los recorridos
     
-#     Returns:
-#     pd.DataFrame: A DataFrame containing the combined trip data.
-#     """
-#     df_2020 = pd.read_csv(csv_2020)
-#     df_2021 = pd.read_csv(csv_2021)
-#     df_2022 = pd.read_csv(csv_2022)
-#     df_2023 = pd.read_csv(csv_2023)
-#     df_2024 = pd.read_csv(csv_2024)
-
-#     #A todos menos 2024 se les saca la primera columna """""
-#     df_2020 = df_2020.iloc[:, 1:]
-#     df_2021 = df_2021.iloc[:, 1:]
-#     df_2022 = df_2022.iloc[:, 1:]
-#     df_2023 = df_2023.iloc[:, 1:]
-
-#     #a 2021 tambien le saco la ultima
-#     df_2021 = df_2021.iloc[:, :-1]
-
-#     #A 2022 le cambio el nobre de la columna Género a género
-#     df_2022.rename(columns={'Género': 'género'}, inplace=True)
-
-#     #A 2024 tambien
-#     df_2024.rename(columns={'genero': 'género'}, inplace=True)
-#     df_2024.rename(columns={'id_recorrido': 'Id_recorrido'}, inplace=True)
-
-#     #A esos mismos datasets, se les saca BAEcobici del id, la estacion y el usuario
-#     df_2020['Id_recorrido'] = df_2020['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
-#     df_2021['Id_recorrido'] = df_2021['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
-#     df_2022['Id_recorrido'] = df_2022['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
-#     df_2023['Id_recorrido'] = df_2023['Id_recorrido'].str.replace('BAEcobici', '', regex=False)
-
-#     df_2020['id_estacion_origen'] = df_2020['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
-#     df_2021['id_estacion_origen'] = df_2021['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
-#     df_2022['id_estacion_origen'] = df_2022['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
-#     df_2023['id_estacion_origen'] = df_2023['id_estacion_origen'].str.replace('BAEcobici', '', regex=False)
-
-#     df_2020['id_estacion_destino'] = df_2020['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
-#     df_2021['id_estacion_destino'] = df_2021['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
-#     df_2022['id_estacion_destino'] = df_2022['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
-#     df_2023['id_estacion_destino'] = df_2023['id_estacion_destino'].str.replace('BAEcobici', '', regex=False)
-
-#     df_2020['id_usuario'] = df_2020['id_usuario'].str.replace('BAEcobici', '', regex=False)
-#     df_2021['id_usuario'] = df_2021['id_usuario'].str.replace('BAEcobici', '', regex=False)
-#     df_2022['id_usuario'] = df_2022['id_usuario'].str.replace('BAEcobici', '', regex=False)
-#     df_2023['id_usuario'] = df_2023['id_usuario'].str.replace('BAEcobici', '', regex=False)
+    Returns:
+    tuple: (DataFrame filtrado, índices de filas eliminadas)
+    """
+    # Convertir columna fecha_origen_recorrido a datetime
+    df['fecha_origen_recorrido'] = pd.to_datetime(df['fecha_origen_recorrido'], 
+                                                 format='%Y-%m-%d %H:%M:%S', 
+                                                 errors='coerce')
     
-#     # Combine the DataFrames
-#     df_combined = pd.concat([df_2020, df_2021, df_2022, df_2023, df_2024], ignore_index=True)
-    
-#     # Remove duplicate rows
-#     df_combined.drop_duplicates(inplace=True)
-    
-#     return df_combined
+    # Debug: Verificar el rango de fechas antes de cortar
+    print("Rango de fechas original:")
+    print(df['fecha_origen_recorrido'].min(), "a", df['fecha_origen_recorrido'].max())
 
-def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
+    # Convertir fecha_limite
+    if isinstance(fecha_limite, str):
+        if len(fecha_limite) == 10:  # Solo fecha sin hora
+            fecha_limite = pd.to_datetime(fecha_limite + ' 23:59:59', format='%Y-%m-%d %H:%M:%S')
+        else:
+            fecha_limite = pd.to_datetime(fecha_limite, format='%Y-%m-%d %H:%M:%S')
+    
+    print(f"Fecha límite aplicada: {fecha_limite}")
+
+    # Filtrar el DataFrame
+    mask = df['fecha_origen_recorrido'] <= fecha_limite
+    df_filtered = df[mask].copy()
+    eliminated_rows = df[~mask].index
+    
+    # Debug: Verificar el rango de fechas después de cortar
+    print("Rango de fechas después de cortar:")
+    print(df_filtered['fecha_origen_recorrido'].min(), "a", df_filtered['fecha_origen_recorrido'].max())
+    print(f"Filas eliminadas: {len(eliminated_rows)}")
+
+    return df_filtered, eliminated_rows
+
+
+def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020=None):
     """
     Concatenates multiple CSV files containing trip data into a single DataFrame,
     with consistent cleaning across all years and no ghost columns.
     
     Parameters:
-    csv_2020 (str): Path to the CSV file for the year 2020.
+    csv_2020 (str or None): Path to the CSV file for the year 2020, or None to skip.
     csv_2021 (str): Path to the CSV file for the year 2021.
     csv_2022 (str): Path to the CSV file for the year 2022.
     csv_2023 (str): Path to the CSV file for the year 2023.
     csv_2024 (str): Path to the CSV file for the year 2024.
     Returns:
-    pd.DataFrame: A cleaned DataFrame containing the combined trip data without ghost columns.
+    tuple: (DataFrame limpio, índices eliminados)
     """
     # Configuración común para lectura de CSVs
     read_csv_params = {
@@ -157,7 +132,12 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
     }
     
     # Leer los archivos con configuración consistente
-    df_2020 = pd.read_csv(csv_2020, **read_csv_params)
+    # Solo leer 2020 si se proporciona un path
+    if csv_2020 is not None:
+        df_2020 = pd.read_csv(csv_2020, **read_csv_params)
+    else:
+        df_2020 = pd.DataFrame()  # DataFrame vacío
+    
     df_2021 = pd.read_csv(csv_2021, **read_csv_params)
     df_2022 = pd.read_csv(csv_2022, **read_csv_params)
     df_2023 = pd.read_csv(csv_2023, **read_csv_params)
@@ -173,12 +153,12 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
             df_2021.loc[mask_genero_empty & mask_genero_cap_valid, 'género'] = df_2021.loc[mask_genero_empty & mask_genero_cap_valid, 'Género']
             df_2021.drop(columns=['Género'], inplace=True)
 
-    #cortar el dataset de 2024 hasta el 31 de agosto inclusive
-    df_2024['fecha_origen_recorrido'] = pd.to_datetime(df_2024['fecha_origen_recorrido'], errors='coerce')
-    df_2024 = df_2024[df_2024['fecha_origen_recorrido'].dt.date <= pd.to_datetime('2024-08-31').date()]
+    # Cortar el dataset de 2024 hasta el 31 de agosto inclusive
+    df_2024, eliminated_2024 = cut_recorridos(df_2024, '2024-08-31')
 
     # Eliminar columnas no deseadas (primera columna para años 2020-2023)
-    dfs_to_trim = [df_2020, df_2021, df_2022, df_2023]
+    # Solo procesar 2020 si no está vacío
+    dfs_to_trim = [df for df in [df_2020, df_2021, df_2022, df_2023] if not df.empty]
     for df in dfs_to_trim:
         if len(df.columns) > 0:
             df.drop(df.columns[0], axis=1, inplace=True)
@@ -195,17 +175,21 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
 
     # Limpieza de prefijos BAEcobici en múltiples columnas (2020-2023)
     cols_to_clean = ['Id_recorrido', 'id_estacion_origen', 'id_estacion_destino', 'id_usuario']
-    dfs_to_clean = [df_2020, df_2021, df_2022, df_2023]
+    dfs_to_clean = [df for df in [df_2020, df_2021, df_2022, df_2023] if not df.empty]
     
     for df in dfs_to_clean:
         for col in cols_to_clean:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.replace('BAEcobici', '', regex=False)
 
-    # Combinar todos los DataFrames
-    df_combined = pd.concat([df_2020, df_2021, df_2022, df_2023, df_2024], 
-                           ignore_index=True, 
-                           verify_integrity=True)
+    #para todos los datasets, la columna id_usuario la pasa a int
+    all_dfs = [df for df in [df_2020, df_2021, df_2022, df_2023, df_2024] if not df.empty]
+    for df in all_dfs:
+        if 'id_usuario' in df.columns:
+            df['id_usuario'] = pd.to_numeric(df['id_usuario'], errors='coerce').astype('Int64')
+
+    # Combinar todos los DataFrames (solo los que no están vacíos)
+    df_combined = pd.concat(all_dfs, ignore_index=True, verify_integrity=True)
 
     # Eliminar duplicados y posibles columnas fantasma
     df_combined = df_combined.loc[:, ~df_combined.columns.str.contains('^Unnamed')]
@@ -215,4 +199,57 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020):
     # Limpieza final de espacios en blancos en nombres de columnas
     df_combined.columns = df_combined.columns.str.strip()
     
-    return df_combined
+    return df_combined, eliminated_2024
+
+import pandas as pd
+def unificar_datasets(df_recorridos, df_usuarios):
+    """
+    Une los datasets de recorridos y usuarios basándose en el id_usuario.
+    Agrega las columnas edad_usuario, fecha_alta y hora_alta del dataset usuarios 
+    al dataset recorridos usando id_usuario como clave.
+    
+    Parameters:
+    df_recorridos (pd.DataFrame): DataFrame con los datos de recorridos
+    df_usuarios (pd.DataFrame): DataFrame con los datos de usuarios
+    
+    Returns:
+    pd.DataFrame: DataFrame unificado con información de recorridos y usuarios
+    """
+    
+    # Verificar que las columnas necesarias existan
+    required_cols_recorridos = ['id_usuario']
+    required_cols_usuarios = ['id_usuario', 'edad_usuario', 'fecha_alta', 'hora_alta']
+    
+    # for col in required_cols_recorridos:
+    #     if col not in df_recorridos.columns:
+    #         raise ValueError(f"Columna '{col}' no encontrada en dataset de recorridos")
+    
+    for col in required_cols_usuarios:
+        if col not in df_usuarios.columns:
+            print(df_usuarios.head())
+            raise ValueError(f"Columna '{col}' no encontrada en dataset de usuarios")
+    
+    # Convertir id_usuario a tipo consistente (string) en ambos datasets para evitar problemas de tipo
+    df_recorridos['id_usuario'] = df_recorridos['id_usuario'].astype(str)
+    df_usuarios['id_usuario'] = df_usuarios['id_usuario'].astype(str)
+    
+    # Realizar el merge (LEFT JOIN) para mantener todos los recorridos
+    # Solo seleccionamos las columnas que queremos agregar del dataset usuarios
+    df_unified = df_recorridos.merge(
+        df_usuarios[['id_usuario', 'edad_usuario', 'fecha_alta', 'hora_alta']], 
+        on='id_usuario', 
+        how='left'
+    )
+    
+    # Reportar estadísticas del merge
+    total_recorridos = len(df_recorridos)
+    recorridos_con_usuario = df_unified['edad_usuario'].notna().sum()
+    recorridos_sin_usuario = total_recorridos - recorridos_con_usuario
+    
+    print(f"Estadísticas del merge:")
+    print(f"Total recorridos: {total_recorridos}")
+    print(f"Recorridos con información de usuario: {recorridos_con_usuario}")
+    print(f"Recorridos sin información de usuario: {recorridos_sin_usuario}")
+    print(f"Porcentaje de match: {(recorridos_con_usuario/total_recorridos)*100:.2f}%")
+    
+    return df_unified

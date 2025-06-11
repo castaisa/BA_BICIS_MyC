@@ -1,15 +1,15 @@
 # ✅ Lista de tareas del proyecto
 ---
 
-## 🚀 A futuro
-- [] 
+## 🚀 Fila de espera
+- [] Juntar datasets
 - [] 
 - [ ] 
 - [ ] 
 
 ---
 
-## 🧠 Hacer rápido
+## 🧠 A largo plazo
 - [ ] 
 - [ ] 
 - [ ] 
@@ -19,11 +19,11 @@
 ---
 
 ## 🧪 En proceso - no tocar
-- [ ] Pruebas de usuario manuales
-- [ ] Automatizar pruebas con Cypress
+- [ ] 
+- [ ] 
 
 ---
 
-## 📝 Extras
-- [ ] Documentar instalación en README
-- [ ] Agregar badges de estado (build, coverage)
+## 📝 Listo
+- [ ] 
+- [ ] 
