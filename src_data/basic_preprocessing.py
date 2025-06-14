@@ -143,6 +143,7 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020=None):
     df_2023 = pd.read_csv(csv_2023, **read_csv_params)
     df_2024 = pd.read_csv(csv_2024, **read_csv_params)
 
+
     # Fix 2021 dataset gender columns issue
     if 'género' in df_2021.columns and 'Género' in df_2021.columns:
             # Combine the two gender columns, taking non-null values from either
@@ -181,6 +182,13 @@ def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020=None):
         for col in cols_to_clean:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.replace('BAEcobici', '', regex=False)
+    
+    #Cambio la columna id_estacion_destino y id_estacion_origen a int
+    for df in [df_2020, df_2021, df_2022, df_2023, df_2024]:
+        if 'id_estacion_destino' in df.columns:
+            df['id_estacion_destino'] = pd.to_numeric(df['id_estacion_destino'], errors='coerce').astype('Int64')
+        if 'id_estacion_origen' in df.columns:
+            df['id_estacion_origen'] = pd.to_numeric(df['id_estacion_origen'], errors='coerce').astype('Int64')
 
     #para todos los datasets, la columna id_usuario la pasa a int
     all_dfs = [df for df in [df_2020, df_2021, df_2022, df_2023, df_2024] if not df.empty]
