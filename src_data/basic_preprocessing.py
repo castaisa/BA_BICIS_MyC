@@ -232,7 +232,7 @@ def unificar_datasets(df_recorridos, df_usuarios):
     # Convertir id_usuario a tipo consistente (string) en ambos datasets para evitar problemas de tipo
     df_recorridos['id_usuario'] = df_recorridos['id_usuario'].astype(str)
     df_usuarios['id_usuario'] = df_usuarios['id_usuario'].astype(str)
-    
+    #
     # Realizar el merge (LEFT JOIN) para mantener todos los recorridos
     # Solo seleccionamos las columnas que queremos agregar del dataset usuarios
     df_unified = df_recorridos.merge(
