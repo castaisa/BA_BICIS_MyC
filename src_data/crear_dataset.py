@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import holidays
 
-def crear_dataset_prediccion_bicis(df, id_estacion):
+def crear_dataset_prediccion_bicis(df, id_estacion, to_use=None):
     """
     Crea un dataset para predecir cuántas bicis llegarán a una estación por hora.
     
@@ -16,7 +16,7 @@ def crear_dataset_prediccion_bicis(df, id_estacion):
     """
     
     # Limpiar y preparar datos
-    df = df.copy()
+    df = df.copy()        
     
     # Convertir fechas a datetime
     df['fecha_origen_recorrido'] = pd.to_datetime(df['fecha_origen_recorrido'])
@@ -205,6 +205,7 @@ def generar_dataset_multiple_estaciones(df, lista_estaciones=None):
             continue
     
     # Concatenar todos los datasets
-    dataset_final = pd.concat(datasets, ignore_index=True)
+    # dataset_final = pd.concat(datasets, ignore_index=True)
     
-    return dataset_final
+    # return dataset_final
+    return datasets
