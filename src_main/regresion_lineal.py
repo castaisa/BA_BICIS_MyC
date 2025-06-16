@@ -1,0 +1,133 @@
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.preprocessing import StandardScaler
+import os
+import random
+
+estaciones = [2, 10, 14, 21, 45, 66, 73, 100, 289, 299, 304, 305]
+
+proms_mae = []
+proms_rmse = []
+proms_mse = []
+proms_r2 = []
+
+for estacion in estaciones:
+    # Cargar el dataset
+    dataset_train_path = f"data/processed/features1/train/dataset_train_{estacion}.csv"
+    dataset_val_path = f"data/processed/features1/validation/dataset_val_{estacion}.csv"
+    
+    if not os.path.exists(dataset_train_path) or not os.path.exists(dataset_val_path):
+        print(f"Dataset no encontrado para la estación {estacion}.")
+        continue
+    
+    dataset_train = pd.read_csv(dataset_train_path)
+    dataset_val = pd.read_csv(dataset_val_path)
+    
+    # Diagnóstico inicial
+    print(f"\n=== ESTACIÓN {estacion} ===")
+    print(f"Train shape: {dataset_train.shape}")
+    print(f"Val shape: {dataset_val.shape}")
+    
+    # Borrar las columnas fecha_hora, fecha, año
+    cols_to_drop = ['fecha_hora', 'fecha', 'año']
+    existing_cols = [col for col in cols_to_drop if col in dataset_train.columns]
+    
+    if existing_cols:
+        dataset_train.drop(columns=existing_cols, inplace=True)
+        dataset_val.drop(columns=existing_cols, inplace=True)
+    
+    # Verificar que existe la columna target
+    if 'target' not in dataset_train.columns:
+        print(f"ERROR: No se encuentra la columna 'target' en estación {estacion}")
+        print(f"Columnas disponibles: {list(dataset_train.columns)}")
+        continue
+    
+    # Separar características y objetivo
+    X_train = dataset_train.drop(columns=['target'])
+    y_train = dataset_train['target']
+    X_val = dataset_val.drop(columns=['target'])
+    y_val = dataset_val['target']
+    
+    # DIAGNÓSTICOS IMPORTANTES
+    print(f"Target train - Min: {y_train.min():.2f}, Max: {y_train.max():.2f}, Mean: {y_train.mean():.2f}")
+    print(f"Target val - Min: {y_val.min():.2f}, Max: {y_val.max():.2f}, Mean: {y_val.mean():.2f}")
+    
+    # Verificar NaN
+    if X_train.isnull().sum().sum() > 0 or y_train.isnull().sum() > 0:
+        print(f"WARNING: Hay valores NaN en train")
+        X_train = X_train.fillna(X_train.mean())
+        y_train = y_train.fillna(y_train.mean())
+    
+    if X_val.isnull().sum().sum() > 0 or y_val.isnull().sum() > 0:
+        print(f"WARNING: Hay valores NaN en validation")
+        X_val = X_val.fillna(X_val.mean())
+        y_val = y_val.fillna(y_val.mean())
+    
+    # Verificar valores infinitos
+    if np.isinf(X_train).any().any() or np.isinf(y_train).any():
+        print(f"WARNING: Hay valores infinitos en train")
+    
+    # Entrenar la regresión lineal
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    
+    # Realizar predicciones
+    predictions = model.predict(X_val)
+    
+    # Diagnóstico de predicciones
+    print(f"Predictions - Min: {predictions.min():.2f}, Max: {predictions.max():.2f}, Mean: {predictions.mean():.2f}")
+    
+    # Calcular métricas (usando sklearn para MAE también)
+    mse = mean_squared_error(y_val, predictions)
+    r2 = r2_score(y_val, predictions)
+    rmse = np.sqrt(mse)
+    mae = mean_absolute_error(y_val, predictions)  # Usar sklearn
+    
+    # Métricas adicionales para diagnóstico
+    baseline_mae = mean_absolute_error(y_val, [y_train.mean()] * len(y_val))  # Baseline: predecir la media
+    
+    # Almacenar las métricas
+    proms_mae.append(mae)
+    proms_rmse.append(rmse)
+    proms_mse.append(mse)
+    proms_r2.append(r2)
+    
+    print(f"RMSE: {rmse:.2f}")
+    print(f"R²: {r2:.4f}")
+    print(f"MSE: {mse:.2f}")
+    print(f"MAE: {mae:.2f}")
+    print(f"Baseline MAE (predecir media): {baseline_mae:.2f}")
+    print(f"¿Mejor que baseline?: {'Sí' if mae < baseline_mae else 'No'}")
+    
+    # Verificar si el R² es negativo (muy malo)
+    if r2 < 0:
+        print("⚠️  WARNING: R² negativo indica que el modelo es peor que predecir la media")
+    
+    print("-" * 50)
+
+# Calcular promedios
+if proms_mae:  # Solo si hay datos
+    promedio_mae = np.mean(proms_mae)
+    promedio_rmse = np.mean(proms_rmse)
+    promedio_mse = np.mean(proms_mse)
+    promedio_r2 = np.mean(proms_r2)
+    
+    print(f"\n=== PROMEDIOS FINALES ===")
+    print(f"Promedio MAE: {promedio_mae:.2f}")
+    print(f"Promedio RMSE: {promedio_rmse:.2f}")
+    print(f"Promedio MSE: {promedio_mse:.2f}")
+    print(f"Promedio R²: {promedio_r2:.4f}")
+    
+    # Interpretación
+    print(f"\n=== INTERPRETACIÓN ===")
+    if promedio_r2 > 0.7:
+        print("✅ Buen ajuste del modelo")
+    elif promedio_r2 > 0.3:
+        print("⚠️  Ajuste moderado del modelo")
+    else:
+        print("❌ Ajuste pobre del modelo")
+else:
+    print("No se procesaron datos")
