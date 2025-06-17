@@ -5,7 +5,7 @@ from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.metrics import mean_squared_error, r2_score, root_mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.model_selection import train_test_split
 
-ds_14 = pd.read_csv('data/processed/dataset_14.csv')
+ds_14 = pd.read_csv('data/processed/features1/train/dataset_train_11.csv')
 
 
 

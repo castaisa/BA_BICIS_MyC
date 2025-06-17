@@ -1,20 +1,27 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
+#Importo gradient boosting para comparar
+from sklearn.ensemble import GradientBoostingRegressor
+
+#Importo una red neuronal para comparar
+from sklearn.neural_network import MLPRegressor
+
+
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 import os
 import random
 
-estaciones = [2, 10, 14, 21, 45, 66, 73, 100, 289, 299, 304, 305]
+estaciones = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150]
 
 proms_mae = []
 proms_rmse = []
 proms_mse = []
 proms_r2 = []
 
-for estacion in estaciones:
+for estacion in range(1, 380):
     # Cargar el dataset
     dataset_train_path = f"data/processed/features1/train/dataset_train_{estacion}.csv"
     dataset_val_path = f"data/processed/features1/validation/dataset_val_{estacion}.csv"
@@ -32,7 +39,7 @@ for estacion in estaciones:
     print(f"Val shape: {dataset_val.shape}")
     
     # Borrar las columnas fecha_hora, fecha, año
-    cols_to_drop = ['fecha_hora', 'fecha', 'año']
+    cols_to_drop = ['fecha_hora', 'fecha', 'año', 'id_estacion']
     existing_cols = [col for col in cols_to_drop if col in dataset_train.columns]
     
     if existing_cols:
@@ -51,9 +58,9 @@ for estacion in estaciones:
     X_val = dataset_val.drop(columns=['target'])
     y_val = dataset_val['target']
     
-    # DIAGNÓSTICOS IMPORTANTES
-    print(f"Target train - Min: {y_train.min():.2f}, Max: {y_train.max():.2f}, Mean: {y_train.mean():.2f}")
-    print(f"Target val - Min: {y_val.min():.2f}, Max: {y_val.max():.2f}, Mean: {y_val.mean():.2f}")
+    # # DIAGNÓSTICOS IMPORTANTES
+    # print(f"Target train - Min: {y_train.min():.2f}, Max: {y_train.max():.2f}, Mean: {y_train.mean():.2f}")
+    # print(f"Target val - Min: {y_val.min():.2f}, Max: {y_val.max():.2f}, Mean: {y_val.mean():.2f}")
     
     # Verificar NaN
     if X_train.isnull().sum().sum() > 0 or y_train.isnull().sum() > 0:
@@ -71,12 +78,23 @@ for estacion in estaciones:
         print(f"WARNING: Hay valores infinitos en train")
     
     # Entrenar la regresión lineal
-    model = LinearRegression()
+    #model = LinearRegression()
+    #model = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=6, random_state=13) #el de 3 dio mejor
+    model = MLPRegressor(hidden_layer_sizes=(500, 398), max_iter=500, random_state=13)  # Red neuronal simple
     model.fit(X_train, y_train)
+    
     
     # Realizar predicciones
     predictions = model.predict(X_val)
     
+    # Diagnóstico de predicciones
+    print(f"Predictions - Min: {predictions.min():.2f}, Max: {predictions.max():.2f}, Mean: {predictions.mean():.2f}")
+
+    
+    #Restringir las predicciones a mayor o igual a 0
+    #predictions = np.clip(predictions, 0, None)
+
+
     # Diagnóstico de predicciones
     print(f"Predictions - Min: {predictions.min():.2f}, Max: {predictions.max():.2f}, Mean: {predictions.mean():.2f}")
     
@@ -95,11 +113,11 @@ for estacion in estaciones:
     proms_mse.append(mse)
     proms_r2.append(r2)
     
-    print(f"RMSE: {rmse:.2f}")
-    print(f"R²: {r2:.4f}")
-    print(f"MSE: {mse:.2f}")
-    print(f"MAE: {mae:.2f}")
-    print(f"Baseline MAE (predecir media): {baseline_mae:.2f}")
+    print(f"RMSE: {rmse:.6f}")
+    print(f"R²: {r2:.6f}")
+    print(f"MSE: {mse:.6f}")
+    print(f"MAE: {mae:.6f}")
+    print(f"Baseline MAE (predecir media): {baseline_mae:.6f}")
     print(f"¿Mejor que baseline?: {'Sí' if mae < baseline_mae else 'No'}")
     
     # Verificar si el R² es negativo (muy malo)
@@ -116,10 +134,10 @@ if proms_mae:  # Solo si hay datos
     promedio_r2 = np.mean(proms_r2)
     
     print(f"\n=== PROMEDIOS FINALES ===")
-    print(f"Promedio MAE: {promedio_mae:.2f}")
-    print(f"Promedio RMSE: {promedio_rmse:.2f}")
-    print(f"Promedio MSE: {promedio_mse:.2f}")
-    print(f"Promedio R²: {promedio_r2:.4f}")
+    print(f"Promedio MAE: {promedio_mae:.6f}")
+    print(f"Promedio RMSE: {promedio_rmse:.6f}")
+    print(f"Promedio MSE: {promedio_mse:.6f}")
+    print(f"Promedio R²: {promedio_r2:.6f}")
     
     # Interpretación
     print(f"\n=== INTERPRETACIÓN ===")
