@@ -81,3 +81,38 @@ def split_dataframe(df, train_size=0.8, val_size=0.1, test_size=0.1, chronologic
     print(f"Test: {len(test_df)} ({len(test_df)/total_samples:.1%})")
     
     return train_df, val_df, test_df    
+
+
+def count_station_arrivals(df):
+    """
+    Cuenta cuántas llegadas tiene cada estación.
+    Devuelve un diccionario con ID de estación como clave y cantidad de llegadas como valor.
+    """
+    if 'id_estacion_destino' not in df.columns:
+        raise ValueError("El DataFrame debe contener la columna 'id_estacion_destino'.")
+    
+    arrivals = df['id_estacion_destino'].value_counts().to_dict()
+    
+    # Ordenar por ID de estación
+    sorted_arrivals = dict(sorted(arrivals.items(), key=lambda x: int(x[0]) if isinstance(x[0], (int, float, np.integer)) else float('inf')))
+    
+    return sorted_arrivals
+
+def filter_by_value(df, column, value):
+    """
+    Filtra un DataFrame devolviendo todas las filas que tienen un valor específico en una columna.
+    
+    Args:
+        df (pd.DataFrame): DataFrame a filtrar
+        column (str): Nombre de la columna por la cual filtrar
+        value: Valor a buscar en la columna
+    
+    Returns:
+        pd.DataFrame: DataFrame filtrado con las filas que coinciden
+    """
+    if column not in df.columns:
+        raise ValueError(f"La columna '{column}' no existe en el DataFrame.")
+    
+    filtered_df = df[df[column] == value].reset_index(drop=True)
+    
+    return filtered_df
