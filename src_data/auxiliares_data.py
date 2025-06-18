@@ -96,6 +96,8 @@ def count_station_arrivals(df):
         raise ValueError("El DataFrame debe contener la columna 'id_estacion_destino'.")
     
     arrivals = df['id_estacion_destino'].value_counts().to_dict()
+    print("ids: ", arrivals.keys())
+
     
     # Ordenar por ID de estación
     sorted_arrivals = dict(sorted(arrivals.items(), key=lambda x: int(x[0]) if isinstance(x[0], (int, float, np.integer)) else float('inf')))
@@ -362,3 +364,71 @@ def plot_station_network_optimized(df, min_trips=5, figsize=(12, 8), layout_algo
         }
     }
 
+def filter_stations_by_min_trips(df, min_trips=5):
+    """
+    Filtra conexiones entre estaciones manteniendo aquellas que cumplen el mínimo de viajes,
+    similar al comportamiento de plot_station_network_optimized.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de recorridos
+        min_trips (int): Número mínimo de viajes requeridos por conexión
+        
+    Returns:
+        dict: Diccionario con resultados del filtrado
+    """
+    if not all(col in df.columns for col in ['id_estacion_origen', 'id_estacion_destino']):
+        raise ValueError("El DataFrame debe contener columnas de origen y destino")
+
+    # 1. Contar viajes por cada conexión (par origen-destino)
+    conexiones = df.groupby(['id_estacion_origen', 'id_estacion_destino']).size().reset_index(name='count')
+    
+    # 2. Identificar conexiones que cumplen el mínimo
+    conexiones_validas = conexiones[conexiones['count'] >= min_trips]
+    
+    # 3. Filtrar el DataFrame original manteniendo solo las conexiones válidas
+    # (usando merge para conservar todas las columnas originales)
+    filtered_df = pd.merge(df, 
+                         conexiones_validas[['id_estacion_origen', 'id_estacion_destino']],
+                         on=['id_estacion_origen', 'id_estacion_destino'],
+                         how='inner')
+    
+    # 4. Identificar estaciones afectadas
+    estaciones_originales = set(df['id_estacion_origen']).union(set(df['id_estacion_destino']))
+    estaciones_finales = set(filtered_df['id_estacion_origen']).union(set(filtered_df['id_estacion_destino']))
+    estaciones_eliminadas = estaciones_originales - estaciones_finales
+    
+    # 5. Calcular estadísticas
+    stats = {
+        'initial_trips': len(df),
+        'final_trips': len(filtered_df),
+        'initial_stations': len(estaciones_originales),
+        'final_stations': len(estaciones_finales),
+        'removed_stations': len(estaciones_eliminadas),
+        'initial_connections': len(conexiones),
+        'final_connections': len(conexiones_validas),
+        'retention_trips': len(filtered_df) / len(df) * 100,
+        'retention_stations': len(estaciones_finales) / len(estaciones_originales) * 100,
+        'min_trips_threshold': min_trips,
+        'removed_stations_list': list(estaciones_eliminadas)
+    }
+    
+    # 6. Reporte detallado
+    print(f"=== FILTRADO (min_trips={min_trips}) ===")
+    print(f"Viajes originales: {stats['initial_trips']:,}")
+    print(f"Viajes conservados: {stats['final_trips']:,} ({stats['retention_trips']:.2f}%)")
+    print(f"\nEstaciones originales: {stats['initial_stations']}")
+    print(f"Estaciones conservadas: {stats['final_stations']} ({stats['retention_stations']:.2f}%)")
+    print(f"Estaciones eliminadas: {stats['removed_stations']}")
+    print(f"\nConexiones originales: {stats['initial_connections']}")
+    print(f"Conexiones conservadas: {stats['final_connections']}")
+    
+    if stats['removed_stations'] > 0:
+        print(f"\nEstaciones eliminadas (sin conexiones válidas):")
+        print(stats['removed_stations_list'])
+    
+    return {
+        'filtered_df': filtered_df.reset_index(drop=True),
+        'stats': stats,
+        'valid_stations': list(estaciones_finales),
+        'valid_connections': conexiones_validas
+    }

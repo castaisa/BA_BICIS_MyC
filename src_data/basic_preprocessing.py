@@ -293,3 +293,29 @@ def cut_df(df, start_date=None, end_date=None):
         df_copy = df_copy[df_copy['fecha_destino_recorrido'] <= end_date]
     
     return df_copy.reset_index(drop=True)
+
+def remove_stations(df, removed_stations):
+    """
+    Elimina del DataFrame todas las filas donde el destino sea una estación de la lista de estaciones removidas.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de recorridos
+        removed_stations (list): Lista de IDs de estaciones a remover
+    
+    Returns:
+        pd.DataFrame: DataFrame filtrado sin las estaciones removidas
+    """
+    if 'id_estacion_destino' not in df.columns:
+        raise ValueError("El DataFrame debe contener la columna 'id_estacion_destino'.")
+    
+    initial_count = len(df)
+    
+    # Filtrar las filas que NO tienen destino en las estaciones removidas
+    filtered_df = df[~df['id_estacion_destino'].isin(removed_stations)].reset_index(drop=True)
+    
+    removed_count = initial_count - len(filtered_df)
+    
+    print(f"Se eliminaron {removed_count} filas que llegaban a estaciones removidas.")
+    print(f"Dataset original: {initial_count} filas → Dataset filtrado: {len(filtered_df)} filas")
+    
+    return filtered_df    

@@ -12,5 +12,6 @@ TO DO:
 - hacer un grafo de todos los viajes entre estaciones (hacer que si hay mas viajes sea mas grande y mas oscuro)
 - discretizar
 - graficas y_pred vs y para ver como caen las predicciones
+- ver lo de las conexiones entre estaciones que hay 6 grupos separados
 
 - borar las estcines que se crean en 2024 (val y test)
