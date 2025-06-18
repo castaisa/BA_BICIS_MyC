@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import networkx as nx
+from math import radians, sin, cos, sqrt, atan2
+
 
 
 def get_muestras(df, n_muestras=1000):
@@ -117,3 +120,322 @@ def filter_by_value(df, column, value):
     
     return filtered_df
 
+
+def plot_station_network_optimized(df, min_trips=5, figsize=(12, 8), layout_algorithm='spring', 
+                                   show_labels=True, label_threshold=50):
+    """
+    Versión optimizada que dibuja un grafo de viajes entre estaciones.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de recorridos
+        min_trips (int): Número mínimo de viajes para mostrar una conexión
+        figsize (tuple): Tamaño de la figura
+        layout_algorithm (str): 'spring', 'circular', 'kamada_kawai', 'random'
+        show_labels (bool): Si mostrar etiquetas de los nodos
+        label_threshold (int): Máximo número de nodos para mostrar todas las etiquetas
+    """
+    
+    if 'id_estacion_origen' not in df.columns or 'id_estacion_destino' not in df.columns:
+        raise ValueError("El DataFrame debe contener las columnas 'id_estacion_origen' e 'id_estacion_destino'.")
+    
+    print("Procesando datos...")
+    
+    # 1. OPTIMIZACIÓN: Usar groupby más eficiente
+    trip_counts = (df.groupby(['id_estacion_origen', 'id_estacion_destino'])
+                     .size()
+                     .reset_index(name='count'))
+    
+    # Filtrar conexiones con pocos viajes
+    trip_counts = trip_counts[trip_counts['count'] >= min_trips]
+    
+    if len(trip_counts) == 0:
+        print("No hay suficientes datos para mostrar el grafo.")
+        return
+    
+    print(f"Conexiones encontradas: {len(trip_counts)}")
+    
+    # 2. OPTIMIZACIÓN: Crear grafo más eficientemente
+    G = nx.from_pandas_edgelist(trip_counts, 
+                               source='id_estacion_origen',
+                               target='id_estacion_destino', 
+                               edge_attr='count',
+                               create_using=nx.DiGraph())
+    
+    # 3. OPTIMIZACIÓN: Calcular grados usando pandas (MUCHO más rápido)
+    print("Calculando estadísticas de estaciones...")
+    
+    # Calcular in-degree y out-degree por separado
+    in_degrees = trip_counts.groupby('id_estacion_destino')['count'].sum()
+    out_degrees = trip_counts.groupby('id_estacion_origen')['count'].sum()
+    
+    # Combinar grados (manejar estaciones que solo tienen in o out)
+    all_stations = set(trip_counts['id_estacion_origen']) | set(trip_counts['id_estacion_destino'])
+    station_degrees = {}
+    
+    for station in all_stations:
+        in_deg = in_degrees.get(station, 0)
+        out_deg = out_degrees.get(station, 0)
+        station_degrees[station] = in_deg + out_deg
+    
+    # 4. OPTIMIZACIÓN: Layout más eficiente según el tamaño del grafo
+    print(f"Calculando layout para {len(G.nodes())} nodos...")
+    
+    if len(G.nodes()) > 100:
+        # Para grafos grandes, usar layout más rápido
+        if layout_algorithm == 'spring':
+            pos = nx.spring_layout(G, k=1, iterations=20)  # Menos iteraciones
+        elif layout_algorithm == 'circular':
+            pos = nx.circular_layout(G)
+        elif layout_algorithm == 'random':
+            pos = nx.random_layout(G)
+        else:
+            pos = nx.spring_layout(G, k=1, iterations=20)
+    else:
+        # Para grafos pequeños, usar layout de mejor calidad
+        if layout_algorithm == 'spring':
+            pos = nx.spring_layout(G, k=3, iterations=50)
+        elif layout_algorithm == 'kamada_kawai':
+            pos = nx.kamada_kawai_layout(G)
+        elif layout_algorithm == 'circular':
+            pos = nx.circular_layout(G)
+        else:
+            pos = nx.spring_layout(G, k=3, iterations=50)
+    
+    # 5. Preparar visualización
+    max_degree = max(station_degrees.values())
+    min_degree = min(station_degrees.values())
+    
+    # Crear arrays ordenados para los nodos del grafo
+    node_list = list(G.nodes())
+    node_sizes = [300 + (station_degrees[node] / max_degree) * 2000 for node in node_list]
+    node_colors = [(station_degrees[node] - min_degree) / (max_degree - min_degree) 
+                   for node in node_list]
+    
+    # 6. OPTIMIZACIÓN: Limitar edges para grafos muy densos
+    edges_to_draw = list(G.edges())
+    if len(edges_to_draw) > 1000:
+        print(f"Grafo muy denso ({len(edges_to_draw)} edges). Mostrando solo los {1000} más importantes...")
+        # Ordenar edges por peso y tomar los top 1000
+        edge_weights = [(u, v, G[u][v]['count']) for u, v in edges_to_draw]
+        edge_weights.sort(key=lambda x: x[2], reverse=True)
+        edges_to_draw = [(u, v) for u, v, w in edge_weights[:1000]]
+    
+    # 7. Crear visualización
+    print("Creando visualización...")
+    plt.figure(figsize=figsize)
+    
+    # Dibujar edges (solo los seleccionados)
+    nx.draw_networkx_edges(G, pos, 
+                          edgelist=edges_to_draw,
+                          alpha=0.3, 
+                          edge_color='gray', 
+                          arrows=True, 
+                          arrowsize=10,
+                          arrowstyle='->')
+    
+    # Dibujar nodes
+    nodes = nx.draw_networkx_nodes(G, pos,
+                                  nodelist=node_list,
+                                  node_size=node_sizes,
+                                  node_color=node_colors,
+                                  cmap=plt.cm.Blues,
+                                  alpha=0.8)
+    
+    # Labels configurables
+    if show_labels:
+        if len(G.nodes()) <= label_threshold:
+            # Mostrar todas las etiquetas si el grafo no es muy grande
+            nx.draw_networkx_labels(G, pos, font_size=8)
+            print(f"Mostrando etiquetas de todas las {len(G.nodes())} estaciones")
+        else:
+            # Solo mostrar labels de las estaciones más importantes
+            num_labels = min(20, len(G.nodes()) // 5)  # Máximo 20 o 1/5 del total
+            important_stations = sorted(station_degrees.items(), key=lambda x: x[1], reverse=True)[:num_labels]
+            important_labels = {station: station for station, _ in important_stations}
+            nx.draw_networkx_labels(G, pos, labels=important_labels, font_size=8)
+            print(f"Mostrando etiquetas de las {num_labels} estaciones más activas")
+    else:
+        print("Etiquetas deshabilitadas")
+    
+    plt.title(f'Red de Viajes entre Estaciones\n(Tamaño y color según cantidad de viajes, min_trips={min_trips})')
+    plt.axis('off')
+    
+    # Colorbar
+    plt.colorbar(nodes, label='Cantidad de viajes')
+    plt.tight_layout()
+    plt.show()
+    
+    # Estadísticas detalladas
+    print(f"\n{'='*60}")
+    print(f"📊 ESTADÍSTICAS DETALLADAS DE LA RED DE ESTACIONES")
+    print(f"{'='*60}")
+    
+    # Estadísticas básicas
+    total_trips_filtered = trip_counts['count'].sum()
+    avg_trips_per_connection = total_trips_filtered / len(trip_counts)
+    
+    print(f"\n🚴 DATOS GENERALES:")
+    print(f"   • Total de estaciones en la red: {len(G.nodes())}")
+    print(f"   • Total de conexiones (rutas): {len(G.edges())}")
+    print(f"   • Conexiones mostradas: {len(edges_to_draw)}")
+    print(f"   • Total de viajes (≥{min_trips}): {total_trips_filtered:,}")
+    print(f"   • Promedio viajes por conexión: {avg_trips_per_connection:.1f}")
+    
+    # Densidad del grafo
+    max_possible_edges = len(G.nodes()) * (len(G.nodes()) - 1)  # Grafo dirigido
+    density = len(G.edges()) / max_possible_edges if max_possible_edges > 0 else 0
+    print(f"   • Densidad del grafo: {density:.3f} ({density*100:.1f}%)")
+    
+    # Estadísticas de grados
+    degrees_values = list(station_degrees.values())
+    print(f"\n📈 DISTRIBUCIÓN DE ACTIVIDAD:")
+    print(f"   • Estación más activa: {max_degree:,} viajes")
+    print(f"   • Estación menos activa: {min_degree:,} viajes")
+    print(f"   • Promedio de viajes por estación: {np.mean(degrees_values):.1f}")
+    print(f"   • Mediana de viajes por estación: {np.median(degrees_values):.1f}")
+    print(f"   • Desviación estándar: {np.std(degrees_values):.1f}")
+    
+    # Top estaciones más activas
+    top_stations = sorted(station_degrees.items(), key=lambda x: x[1], reverse=True)[:10]
+    print(f"\n🏆 TOP 10 ESTACIONES MÁS ACTIVAS:")
+    for i, (station, trips) in enumerate(top_stations, 1):
+        percentage = (trips / total_trips_filtered) * 100
+        print(f"   {i:2d}. Estación {station}: {trips:,} viajes ({percentage:.1f}%)")
+    
+    # Análisis de conectividad
+    if len(G.nodes()) > 1:
+        # Componentes conectados (en versión no dirigida para conectividad general)
+        G_undirected = G.to_undirected()
+        connected_components = list(nx.connected_components(G_undirected))
+        largest_component_size = len(max(connected_components, key=len))
+        
+        print(f"\n🔗 ANÁLISIS DE CONECTIVIDAD:")
+        print(f"   • Componentes conectados: {len(connected_components)}")
+        print(f"   • Tamaño del componente principal: {largest_component_size} estaciones ({largest_component_size/len(G.nodes())*100:.1f}%)")
+        
+        if len(connected_components) == 1:
+            print(f"   ✅ La red está completamente conectada")
+        else:
+            print(f"   ⚠️  La red tiene {len(connected_components)} subgrupos separados")
+    
+    # Análisis de centralidad (solo para grafos no muy grandes)
+    if len(G.nodes()) <= 200:
+        print(f"\n🎯 ANÁLISIS DE CENTRALIDAD:")
+        
+        # Centralidad por grados (ya la tenemos)
+        degree_centrality = {node: station_degrees[node] for node in G.nodes()}
+        top_degree = max(degree_centrality.items(), key=lambda x: x[1])
+        
+        # Centralidad de intermediación (betweenness)
+        betweenness = nx.betweenness_centrality(G, weight='count')
+        top_betweenness = max(betweenness.items(), key=lambda x: x[1])
+        
+        print(f"   • Estación con mayor centralidad por grado: {top_degree[0]} ({top_degree[1]:,} viajes)")
+        print(f"   • Estación con mayor centralidad de intermediación: {top_betweenness[0]} ({top_betweenness[1]:.3f})")
+    else:
+        print(f"\n🎯 ANÁLISIS DE CENTRALIDAD: Omitido (grafo muy grande, >200 nodos)")
+    
+    # Información sobre filtros aplicados
+    original_connections = len(df.groupby(['id_estacion_origen', 'id_estacion_destino']).size())
+    filtered_out = original_connections - len(trip_counts)
+    
+    print(f"\n🔍 FILTROS APLICADOS:")
+    print(f"   • Conexiones originales: {original_connections:,}")
+    print(f"   • Conexiones filtradas (< {min_trips} viajes): {filtered_out:,}")
+    print(f"   • Conexiones mostradas: {len(trip_counts):,} ({len(trip_counts)/original_connections*100:.1f}%)")
+    
+    print(f"\n{'='*60}")
+    
+    return {
+        'graph': G,
+        'station_degrees': station_degrees,
+        'trip_counts': trip_counts,
+        'stats': {
+            'nodes': len(G.nodes()),
+            'edges': len(G.edges()),
+            'total_trips': total_trips_filtered,
+            'density': density,
+            'max_degree': max_degree,
+            'min_degree': min_degree,
+            'avg_degree': np.mean(degrees_values)
+        }
+    }
+
+import pandas as pd
+import numpy as np
+from math import radians, sin, cos, sqrt, atan2
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy.spatial.distance import squareform
+
+def haversine(lon1, lat1, lon2, lat2):
+    """Calcula la distancia en km entre dos puntos geográficos"""
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    dlon = lon2 - lon1 
+    dlat = lat2 - lat1 
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    return 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
+
+def generar_matriz_distancias(datos):
+    """
+    Genera matriz de distancias y estadísticas entre estaciones
+    
+    Args:
+        datos: DataFrame con columnas de lat/long de estaciones
+        
+    Returns:
+        dict: Contiene matriz de distancias, estadísticas y gráficos
+    """
+    # Extraer estaciones únicas
+    estaciones = pd.concat([
+        datos[['id_estacion_origen', 'nombre_estacion_origen', 'long_estacion_origen', 'lat_estacion_origen']]
+            .rename(columns={'id_estacion_origen': 'id', 'nombre_estacion_origen': 'nombre', 
+                            'long_estacion_origen': 'long', 'lat_estacion_origen': 'lat'}),
+        datos[['id_estacion_destino', 'nombre_estacion_destino', 'long_estacion_destino', 'lat_estacion_destino']]
+            .rename(columns={'id_estacion_destino': 'id', 'nombre_estacion_destino': 'nombre', 
+                            'long_estacion_destino': 'long', 'lat_estacion_destino': 'lat'})
+    ]).drop_duplicates('id').sort_values('id')
+
+    # Crear matriz de distancias
+    n = len(estaciones)
+    dist_matrix = np.zeros((n, n))
+    
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                dist_matrix[i][j] = haversine(
+                    estaciones.iloc[i]['long'],
+                    estaciones.iloc[i]['lat'],
+                    estaciones.iloc[j]['long'],
+                    estaciones.iloc[j]['lat']
+                )
+    
+    # Convertir a DataFrame con nombres de estaciones
+    dist_df = pd.DataFrame(dist_matrix, 
+                         index=estaciones['nombre'].values,
+                         columns=estaciones['nombre'].values)
+    
+    # Estadísticas relevantes
+    stats = {
+        'distancia_promedio': np.mean(dist_matrix[dist_matrix > 0]),
+        'distancia_maxima': np.max(dist_matrix),
+        'distancia_minima': np.min(dist_matrix[dist_matrix > 0]),
+        'estaciones_mas_cercanas': estaciones.iloc[np.unravel_index(np.argmin(dist_matrix + np.eye(n)*1e6), dist_matrix.shape)]['nombre'].values,
+        'estaciones_mas_lejanas': estaciones.iloc[np.unravel_index(np.argmax(dist_matrix), dist_matrix.shape)]['nombre'].values,
+        'percentiles': np.percentile(dist_matrix[dist_matrix > 0], [25, 50, 75, 90])
+    }
+    
+    # Visualización
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(dist_df, cmap='viridis_r', 
+                mask=np.eye(len(dist_df), dtype=bool),
+                square=True, linewidths=.5)
+    plt.title('Matriz de Distancias entre Estaciones (km)')
+    plt.tight_layout()
+    plt.show()
+    
+    return {
+        'matriz_distancias': dist_df,
+        'estadisticas': stats,
+        'estaciones': estaciones
+    }

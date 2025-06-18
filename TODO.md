@@ -11,3 +11,5 @@ iii) feature engineering
 TO DO:
 - hacer un grafo de todos los viajes entre estaciones (hacer que si hay mas viajes sea mas grande y mas oscuro)
 - discretizar
+
+- borar las estcines que se crean en 2024 (val y test)
