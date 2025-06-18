@@ -361,7 +361,8 @@ def plot_station_network_optimized(df, min_trips=5, figsize=(12, 8), layout_algo
             'max_degree': max_degree,
             'min_degree': min_degree,
             'avg_degree': np.mean(degrees_values)
-        }
+        },
+        'connected_componentes' : connected_components
     }
 
 def filter_stations_by_min_trips(df, min_trips=5, show_stats=True):
@@ -432,4 +433,157 @@ def filter_stations_by_min_trips(df, min_trips=5, show_stats=True):
         'stats': stats,
         'valid_stations': list(estaciones_finales),
         'valid_connections': conexiones_validas
+    }
+
+def plot_stations_map_by_components(df, connected_components, figsize=(15, 10)):
+    """
+    Grafica todas las estaciones en un mapa basado en latitud/longitud,
+    coloreando según los componentes conectados.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de estaciones (debe tener lat/lon)
+        connected_components (list): Lista de sets con estaciones conectadas
+        figsize (tuple): Tamaño de la figura
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+    import numpy as np
+    
+    # Buscar columnas de coordenadas (varias posibilidades)
+    lat_cols = ['lat_estacion_destino', 'latitud_destino', 'lat_destino', 'latitude', 'lat']
+    lon_cols = ['long_estacion_destino', 'longitud_destino', 'lon_destino', 'longitude', 'lon', 'long']
+    
+    lat_col = None
+    lon_col = None
+    
+    for col in lat_cols:
+        if col in df.columns:
+            lat_col = col
+            break
+    
+    for col in lon_cols:
+        if col in df.columns:
+            lon_col = col
+            break
+    
+    if lat_col is None or lon_col is None:
+        raise ValueError(f"No se encontraron columnas de coordenadas. Disponibles: {df.columns.tolist()}")
+    
+    # Obtener datos únicos de estaciones con coordenadas
+    station_cols = ['id_estacion_destino', lat_col, lon_col]
+    if 'nombre_estacion_destino' in df.columns:
+        station_cols.append('nombre_estacion_destino')
+    
+    stations_data = df[station_cols].drop_duplicates(subset=['id_estacion_destino'])
+    stations_data = stations_data.dropna(subset=[lat_col, lon_col])
+    
+    # Convertir IDs a int para matching
+    stations_data['id_estacion_destino'] = stations_data['id_estacion_destino'].astype(int)
+    
+    print(f"Estaciones con coordenadas válidas: {len(stations_data)}")
+    print(f"Componentes conectados: {len(connected_components)}")
+    
+    # Crear mapa de colores
+    if len(connected_components) <= 10:
+        colors = plt.cm.tab10(np.linspace(0, 1, len(connected_components)))
+    else:
+        colors = plt.cm.Set3(np.linspace(0, 1, len(connected_components)))
+    
+    # Color por defecto para estaciones no conectadas
+    default_color = 'lightgray'
+    
+    # Crear el mapa de estación -> color
+    station_colors = {}
+    
+    for i, component in enumerate(connected_components):
+        # Convertir component a set de enteros
+        component_ids = {int(float(station_id)) for station_id in component}
+        for station_id in component_ids:
+            station_colors[station_id] = colors[i]
+    
+    # Preparar datos para plotting
+    plot_colors = []
+    plot_sizes = []
+    component_labels = []
+    
+    for _, station in stations_data.iterrows():
+        station_id = int(station['id_estacion_destino'])
+        
+        if station_id in station_colors:
+            # Encontrar en qué componente está
+            component_idx = None
+            for i, component in enumerate(connected_components):
+                component_ids = {int(float(sid)) for sid in component}
+                if station_id in component_ids:
+                    component_idx = i
+                    break
+            
+            plot_colors.append(station_colors[station_id])
+            plot_sizes.append(100)  # Tamaño grande para estaciones conectadas
+            component_labels.append(f"Componente {component_idx + 1}")
+        else:
+            plot_colors.append(default_color)
+            plot_sizes.append(30)  # Tamaño pequeño para estaciones aisladas
+            component_labels.append("Sin conexión (no cumple con min_trips)")
+    
+    # Crear el gráfico
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Scatter plot principal
+    scatter = ax.scatter(stations_data[lon_col], stations_data[lat_col], 
+                        c=plot_colors, s=plot_sizes, alpha=0.7, edgecolors='black', linewidth=0.5)
+    
+    # Configurar el mapa
+    ax.set_xlabel('Longitud')
+    ax.set_ylabel('Latitud')
+    ax.set_title(f'Mapa de Estaciones por Componentes Conectados\n({len(connected_components)} componentes, {len(stations_data)} estaciones)')
+    ax.grid(True, alpha=0.3)
+    
+    # Crear leyenda personalizada
+    legend_elements = []
+    
+    # Agregar componentes conectados a la leyenda
+    for i, component in enumerate(connected_components):
+        component_size = len(component)
+        legend_elements.append(
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], 
+                      markersize=10, label=f'Componente {i+1} ({component_size} estaciones)')
+        )
+    
+    # Agregar estaciones sin conexión si existen
+    unconnected_count = len(stations_data) - sum(len(comp) for comp in connected_components)
+    if unconnected_count > 0:
+        legend_elements.append(
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=default_color, 
+                      markersize=6, label=f'Sin conexión ({unconnected_count} estaciones)')
+        )
+    
+    # Mostrar leyenda
+    ax.legend(handles=legend_elements, loc='best', bbox_to_anchor=(1.05, 1))
+    
+    plt.tight_layout()
+    
+    # Estadísticas
+    print(f"\n=== ESTADÍSTICAS DEL MAPA ===")
+    print(f"Total estaciones graficadas: {len(stations_data)}")
+    print(f"Estaciones en componentes conectados: {sum(len(comp) for comp in connected_components)}")
+    print(f"Estaciones sin conexión: {unconnected_count}")
+    
+    # Detalles por componente
+    print(f"\n=== DETALLES POR COMPONENTE ===")
+    for i, component in enumerate(connected_components):
+        component_size = len(component)
+        print(f"Componente {i+1}: {component_size} estaciones")
+        if component_size <= 10:  # Mostrar IDs solo si es pequeño
+            component_ids = sorted([int(float(sid)) for sid in component])
+            print(f"  IDs: {component_ids}")
+    
+    plt.show()
+    
+    return {
+        'stations_data': stations_data,
+        'station_colors': station_colors,
+        'total_stations': len(stations_data),
+        'connected_stations': sum(len(comp) for comp in connected_components),
+        'unconnected_stations': unconnected_count
     }

@@ -334,3 +334,5 @@ def analisis_completo(df):
     
     print("\n" + "="*50)
     print("Análisis temporal completado!")
+
+
