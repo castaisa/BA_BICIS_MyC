@@ -116,3 +116,4 @@ def filter_by_value(df, column, value):
     filtered_df = df[df[column] == value].reset_index(drop=True)
     
     return filtered_df
+

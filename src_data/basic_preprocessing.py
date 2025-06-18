@@ -109,6 +109,7 @@ def cut_recorridos(df, fecha_limite):
     return df_filtered, eliminated_rows
 
 
+
 def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020=None):
     """
     Concatenates multiple CSV files containing trip data into a single DataFrame,
@@ -261,3 +262,34 @@ def unificar_datasets(df_recorridos, df_usuarios):
     print(f"Porcentaje de match: {(recorridos_con_usuario/total_recorridos)*100:.2f}%")
     
     return df_unified
+
+
+def cut_df(df, start_date=None, end_date=None):
+    """
+    Corta el DataFrame entre fechas específicas. Si alguna fecha es None, no aplica ese filtro.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con users y recorridos unificados
+        start_date (str, optional): Fecha de inicio en formato 'YYYY-MM-DD'. Si es None, no filtra por inicio.
+        end_date (str, optional): Fecha de fin en formato 'YYYY-MM-DD'. Si es None, no filtra por fin.
+    
+    Returns:
+        pd.DataFrame: DataFrame filtrado entre las fechas especificadas
+    """
+    if 'fecha_destino_recorrido' not in df.columns:
+        raise ValueError("El DataFrame debe contener la columna 'fecha_destino_recorrido'.")
+    
+    df_copy = df.copy()
+    df_copy['fecha_destino_recorrido'] = pd.to_datetime(df_copy['fecha_destino_recorrido'])
+    
+    # Aplicar filtro de fecha inicial si se proporciona
+    if start_date is not None:
+        start_date = pd.to_datetime(start_date)
+        df_copy = df_copy[df_copy['fecha_destino_recorrido'] >= start_date]
+    
+    # Aplicar filtro de fecha final si se proporciona
+    if end_date is not None:
+        end_date = pd.to_datetime(end_date)
+        df_copy = df_copy[df_copy['fecha_destino_recorrido'] <= end_date]
+    
+    return df_copy.reset_index(drop=True)
