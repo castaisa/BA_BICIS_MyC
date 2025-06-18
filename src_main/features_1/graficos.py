@@ -35,3 +35,32 @@ def graficar_columna(dataset, nombre_columna):
     
     plt.tight_layout()
     plt.show()
+
+
+def graficar_pred_vs_real(y_val, y_pred, estacion):
+    """
+    Función que grafica las predicciones vs los valores reales.
+    
+    Args:
+        y_val: Valores reales del conjunto de validación
+        y_pred: Predicciones del modelo
+        estacion: Número de la estación para el título del gráfico
+    """
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_val, y_pred, alpha=0.5)
+    plt.plot([y_val.min(), y_val.max()], [y_val.min(), y_val.max()], 'r--', lw=2)
+    plt.xlabel('Valores Reales')
+    plt.ylabel('Predicciones')
+    plt.xlim(0, 25)
+    plt.ylim(0, 25)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.title(f'Predicciones vs Valores Reales - Estación {estacion}')
+    plt.grid(True)
+    plt.show()
+
+    #Imprimo estadisticas
+
+    print(f"La media de los valores reales es: {y_val.mean()}")
+    print(f"La media de las predicciones es: {y_pred.mean()}")
+    
