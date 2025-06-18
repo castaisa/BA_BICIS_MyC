@@ -435,7 +435,7 @@ def filter_stations_by_min_trips(df, min_trips=5, show_stats=True):
         'valid_connections': conexiones_validas
     }
 
-def plot_stations_map_by_components(df, connected_components, figsize=(15, 10)):
+def plot_stations_map_by_components(df, connected_components, figsize=(9, 5)):
     """
     Grafica todas las estaciones en un mapa basado en latitud/longitud,
     coloreando según los componentes conectados.
