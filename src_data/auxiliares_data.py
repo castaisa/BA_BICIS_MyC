@@ -1,6 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import networkx as nx
+from math import radians, sin, cos, sqrt, atan2
+import seaborn as sns
+
 
 
 def get_muestras(df, n_muestras=1000):
@@ -92,6 +96,8 @@ def count_station_arrivals(df):
         raise ValueError("El DataFrame debe contener la columna 'id_estacion_destino'.")
     
     arrivals = df['id_estacion_destino'].value_counts().to_dict()
+    print("ids: ", arrivals.keys())
+
     
     # Ordenar por ID de estación
     sorted_arrivals = dict(sorted(arrivals.items(), key=lambda x: int(x[0]) if isinstance(x[0], (int, float, np.integer)) else float('inf')))
@@ -116,3 +122,468 @@ def filter_by_value(df, column, value):
     filtered_df = df[df[column] == value].reset_index(drop=True)
     
     return filtered_df
+
+
+def plot_station_network_optimized(df, min_trips=5, figsize=(12, 8), layout_algorithm='spring', 
+                                   show_labels=True, label_threshold=50):
+    """
+    Versión optimizada que dibuja un grafo de viajes entre estaciones.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de recorridos
+        min_trips (int): Número mínimo de viajes para mostrar una conexión
+        figsize (tuple): Tamaño de la figura
+        layout_algorithm (str): 'spring', 'circular', 'kamada_kawai', 'random'
+        show_labels (bool): Si mostrar etiquetas de los nodos
+        label_threshold (int): Máximo número de nodos para mostrar todas las etiquetas
+    """
+    
+    if 'id_estacion_origen' not in df.columns or 'id_estacion_destino' not in df.columns:
+        raise ValueError("El DataFrame debe contener las columnas 'id_estacion_origen' e 'id_estacion_destino'.")
+    
+    print("Procesando datos...")
+    
+    # 1. OPTIMIZACIÓN: Usar groupby más eficiente
+    trip_counts = (df.groupby(['id_estacion_origen', 'id_estacion_destino'])
+                     .size()
+                     .reset_index(name='count'))
+    
+    # Filtrar conexiones con pocos viajes
+    trip_counts = trip_counts[trip_counts['count'] >= min_trips]
+    
+    if len(trip_counts) == 0:
+        print("No hay suficientes datos para mostrar el grafo.")
+        return
+    
+    print(f"Conexiones encontradas: {len(trip_counts)}")
+    
+    # 2. OPTIMIZACIÓN: Crear grafo más eficientemente
+    G = nx.from_pandas_edgelist(trip_counts, 
+                               source='id_estacion_origen',
+                               target='id_estacion_destino', 
+                               edge_attr='count',
+                               create_using=nx.DiGraph())
+    
+    # 3. OPTIMIZACIÓN: Calcular grados usando pandas (MUCHO más rápido)
+    print("Calculando estadísticas de estaciones...")
+    
+    # Calcular in-degree y out-degree por separado
+    in_degrees = trip_counts.groupby('id_estacion_destino')['count'].sum()
+    out_degrees = trip_counts.groupby('id_estacion_origen')['count'].sum()
+    
+    # Combinar grados (manejar estaciones que solo tienen in o out)
+    all_stations = set(trip_counts['id_estacion_origen']) | set(trip_counts['id_estacion_destino'])
+    station_degrees = {}
+    
+    for station in all_stations:
+        in_deg = in_degrees.get(station, 0)
+        out_deg = out_degrees.get(station, 0)
+        station_degrees[station] = in_deg + out_deg
+    
+    # 4. OPTIMIZACIÓN: Layout más eficiente según el tamaño del grafo
+    print(f"Calculando layout para {len(G.nodes())} nodos...")
+    
+    if len(G.nodes()) > 100:
+        # Para grafos grandes, usar layout más rápido
+        if layout_algorithm == 'spring':
+            pos = nx.spring_layout(G, k=1, iterations=20)  # Menos iteraciones
+        elif layout_algorithm == 'circular':
+            pos = nx.circular_layout(G)
+        elif layout_algorithm == 'random':
+            pos = nx.random_layout(G)
+        else:
+            pos = nx.spring_layout(G, k=1, iterations=20)
+    else:
+        # Para grafos pequeños, usar layout de mejor calidad
+        if layout_algorithm == 'spring':
+            pos = nx.spring_layout(G, k=3, iterations=50)
+        elif layout_algorithm == 'kamada_kawai':
+            pos = nx.kamada_kawai_layout(G)
+        elif layout_algorithm == 'circular':
+            pos = nx.circular_layout(G)
+        else:
+            pos = nx.spring_layout(G, k=3, iterations=50)
+    
+    # 5. Preparar visualización
+    max_degree = max(station_degrees.values())
+    min_degree = min(station_degrees.values())
+    
+    # Crear arrays ordenados para los nodos del grafo
+    node_list = list(G.nodes())
+    node_sizes = [300 + (station_degrees[node] / max_degree) * 2000 for node in node_list]
+    node_colors = [(station_degrees[node] - min_degree) / (max_degree - min_degree) 
+                   for node in node_list]
+    
+    # 6. OPTIMIZACIÓN: Limitar edges para grafos muy densos
+    edges_to_draw = list(G.edges())
+    if len(edges_to_draw) > 1000:
+        print(f"Grafo muy denso ({len(edges_to_draw)} edges). Mostrando solo los {1000} más importantes...")
+        # Ordenar edges por peso y tomar los top 1000
+        edge_weights = [(u, v, G[u][v]['count']) for u, v in edges_to_draw]
+        edge_weights.sort(key=lambda x: x[2], reverse=True)
+        edges_to_draw = [(u, v) for u, v, w in edge_weights[:1000]]
+    
+    # 7. Crear visualización
+    print("Creando visualización...")
+    plt.figure(figsize=figsize)
+    
+    # Dibujar edges (solo los seleccionados)
+    nx.draw_networkx_edges(G, pos, 
+                          edgelist=edges_to_draw,
+                          alpha=0.3, 
+                          edge_color='gray', 
+                          arrows=True, 
+                          arrowsize=10,
+                          arrowstyle='->')
+    
+    # Dibujar nodes
+    nodes = nx.draw_networkx_nodes(G, pos,
+                                  nodelist=node_list,
+                                  node_size=node_sizes,
+                                  node_color=node_colors,
+                                  cmap=plt.cm.Blues,
+                                  alpha=0.8)
+    
+    # Labels configurables
+    if show_labels:
+        if len(G.nodes()) <= label_threshold:
+            # Mostrar todas las etiquetas si el grafo no es muy grande
+            nx.draw_networkx_labels(G, pos, font_size=8)
+            print(f"Mostrando etiquetas de todas las {len(G.nodes())} estaciones")
+        else:
+            # Solo mostrar labels de las estaciones más importantes
+            num_labels = min(20, len(G.nodes()) // 5)  # Máximo 20 o 1/5 del total
+            important_stations = sorted(station_degrees.items(), key=lambda x: x[1], reverse=True)[:num_labels]
+            important_labels = {station: station for station, _ in important_stations}
+            nx.draw_networkx_labels(G, pos, labels=important_labels, font_size=8)
+            print(f"Mostrando etiquetas de las {num_labels} estaciones más activas")
+    else:
+        print("Etiquetas deshabilitadas")
+    
+    plt.title(f'Red de Viajes entre Estaciones\n(Tamaño y color según cantidad de viajes, min_trips={min_trips})')
+    plt.axis('off')
+    
+    # Colorbar
+    plt.colorbar(nodes, label='Cantidad de viajes')
+    plt.tight_layout()
+    plt.show()
+    
+    # Estadísticas detalladas
+    print(f"\n{'='*60}")
+    print(f"📊 ESTADÍSTICAS DETALLADAS DE LA RED DE ESTACIONES")
+    print(f"{'='*60}")
+    
+    # Estadísticas básicas
+    total_trips_filtered = trip_counts['count'].sum()
+    avg_trips_per_connection = total_trips_filtered / len(trip_counts)
+    
+    print(f"\n🚴 DATOS GENERALES:")
+    print(f"   • Total de estaciones en la red: {len(G.nodes())}")
+    print(f"   • Total de conexiones (rutas): {len(G.edges())}")
+    print(f"   • Conexiones mostradas: {len(edges_to_draw)}")
+    print(f"   • Total de viajes (≥{min_trips}): {total_trips_filtered:,}")
+    print(f"   • Promedio viajes por conexión: {avg_trips_per_connection:.1f}")
+    
+    # Densidad del grafo
+    max_possible_edges = len(G.nodes()) * (len(G.nodes()) - 1)  # Grafo dirigido
+    density = len(G.edges()) / max_possible_edges if max_possible_edges > 0 else 0
+    print(f"   • Densidad del grafo: {density:.3f} ({density*100:.1f}%)")
+    
+    # Estadísticas de grados
+    degrees_values = list(station_degrees.values())
+    print(f"\n📈 DISTRIBUCIÓN DE ACTIVIDAD:")
+    print(f"   • Estación más activa: {max_degree:,} viajes")
+    print(f"   • Estación menos activa: {min_degree:,} viajes")
+    print(f"   • Promedio de viajes por estación: {np.mean(degrees_values):.1f}")
+    print(f"   • Mediana de viajes por estación: {np.median(degrees_values):.1f}")
+    print(f"   • Desviación estándar: {np.std(degrees_values):.1f}")
+    
+    # Top estaciones más activas
+    top_stations = sorted(station_degrees.items(), key=lambda x: x[1], reverse=True)[:10]
+    print(f"\n🏆 TOP 10 ESTACIONES MÁS ACTIVAS:")
+    for i, (station, trips) in enumerate(top_stations, 1):
+        percentage = (trips / total_trips_filtered) * 100
+        print(f"   {i:2d}. Estación {station}: {trips:,} viajes ({percentage:.1f}%)")
+    
+    # Análisis de conectividad
+    if len(G.nodes()) > 1:
+        # Componentes conectados (en versión no dirigida para conectividad general)
+        G_undirected = G.to_undirected()
+        connected_components = list(nx.connected_components(G_undirected))
+        largest_component_size = len(max(connected_components, key=len))
+        
+        print(f"\n🔗 ANÁLISIS DE CONECTIVIDAD:")
+        print(f"   • Componentes conectados: {len(connected_components)}")
+        print(f"   • Tamaño del componente principal: {largest_component_size} estaciones ({largest_component_size/len(G.nodes())*100:.1f}%)")
+        
+        if len(connected_components) == 1:
+            print(f"   ✅ La red está completamente conectada")
+        else:
+            print(f"   ⚠️  La red tiene {len(connected_components)} subgrupos separados")
+    
+    # Análisis de centralidad (solo para grafos no muy grandes)
+    if len(G.nodes()) <= 200:
+        print(f"\n🎯 ANÁLISIS DE CENTRALIDAD:")
+        
+        # Centralidad por grados (ya la tenemos)
+        degree_centrality = {node: station_degrees[node] for node in G.nodes()}
+        top_degree = max(degree_centrality.items(), key=lambda x: x[1])
+        
+        # Centralidad de intermediación (betweenness)
+        betweenness = nx.betweenness_centrality(G, weight='count')
+        top_betweenness = max(betweenness.items(), key=lambda x: x[1])
+        
+        print(f"   • Estación con mayor centralidad por grado: {top_degree[0]} ({top_degree[1]:,} viajes)")
+        print(f"   • Estación con mayor centralidad de intermediación: {top_betweenness[0]} ({top_betweenness[1]:.3f})")
+    else:
+        print(f"\n🎯 ANÁLISIS DE CENTRALIDAD: Omitido (grafo muy grande, >200 nodos)")
+    
+    # Información sobre filtros aplicados
+    original_connections = len(df.groupby(['id_estacion_origen', 'id_estacion_destino']).size())
+    filtered_out = original_connections - len(trip_counts)
+    
+    print(f"\n🔍 FILTROS APLICADOS:")
+    print(f"   • Conexiones originales: {original_connections:,}")
+    print(f"   • Conexiones filtradas (< {min_trips} viajes): {filtered_out:,}")
+    print(f"   • Conexiones mostradas: {len(trip_counts):,} ({len(trip_counts)/original_connections*100:.1f}%)")
+    
+    print(f"\n{'='*60}")
+    
+    return {
+        'graph': G,
+        'station_degrees': station_degrees,
+        'trip_counts': trip_counts,
+        'stats': {
+            'nodes': len(G.nodes()),
+            'edges': len(G.edges()),
+            'total_trips': total_trips_filtered,
+            'density': density,
+            'max_degree': max_degree,
+            'min_degree': min_degree,
+            'avg_degree': np.mean(degrees_values)
+        },
+        'connected_componentes' : connected_components
+    }
+
+def filter_stations_by_min_trips(df, min_trips=5, show_stats=True):
+    """
+    Filtra conexiones entre estaciones manteniendo aquellas que cumplen el mínimo de viajes,
+    similar al comportamiento de plot_station_network_optimized.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de recorridos
+        min_trips (int): Número mínimo de viajes requeridos por conexión
+        
+    Returns:
+        dict: Diccionario con resultados del filtrado
+    """
+    if not all(col in df.columns for col in ['id_estacion_origen', 'id_estacion_destino']):
+        raise ValueError("El DataFrame debe contener columnas de origen y destino")
+
+    # 1. Contar viajes por cada conexión (par origen-destino)
+    conexiones = df.groupby(['id_estacion_origen', 'id_estacion_destino']).size().reset_index(name='count')
+    
+    # 2. Identificar conexiones que cumplen el mínimo
+    conexiones_validas = conexiones[conexiones['count'] >= min_trips]
+    
+    # 3. Filtrar el DataFrame original manteniendo solo las conexiones válidas
+    # (usando merge para conservar todas las columnas originales)
+    filtered_df = pd.merge(df, 
+                         conexiones_validas[['id_estacion_origen', 'id_estacion_destino']],
+                         on=['id_estacion_origen', 'id_estacion_destino'],
+                         how='inner')
+    
+    # 4. Identificar estaciones afectadas
+    estaciones_originales = set(df['id_estacion_origen']).union(set(df['id_estacion_destino']))
+    estaciones_finales = set(filtered_df['id_estacion_origen']).union(set(filtered_df['id_estacion_destino']))
+    estaciones_eliminadas = estaciones_originales - estaciones_finales
+    
+    # 5. Calcular estadísticas
+    stats = {
+        'initial_trips': len(df),
+        'final_trips': len(filtered_df),
+        'initial_stations': len(estaciones_originales),
+        'final_stations': len(estaciones_finales),
+        'removed_stations': len(estaciones_eliminadas),
+        'initial_connections': len(conexiones),
+        'final_connections': len(conexiones_validas),
+        'retention_trips': len(filtered_df) / len(df) * 100,
+        'retention_stations': len(estaciones_finales) / len(estaciones_originales) * 100,
+        'min_trips_threshold': min_trips,
+        'removed_stations_list': list(estaciones_eliminadas)
+    }
+    
+    # 6. Reporte detallado
+    if show_stats:
+        print(f"=== FILTRADO (min_trips={min_trips}) ===")
+        print(f"Viajes originales: {stats['initial_trips']:,}")
+        print(f"Viajes conservados: {stats['final_trips']:,} ({stats['retention_trips']:.2f}%)")
+        print(f"\nEstaciones originales: {stats['initial_stations']}")
+        print(f"Estaciones conservadas: {stats['final_stations']} ({stats['retention_stations']:.2f}%)")
+        print(f"Estaciones eliminadas: {stats['removed_stations']}")
+        print(f"\nConexiones originales: {stats['initial_connections']}")
+        print(f"Conexiones conservadas: {stats['final_connections']}")
+        
+        if stats['removed_stations'] > 0:
+            print(f"\nEstaciones eliminadas (sin conexiones válidas):")
+            print(stats['removed_stations_list'])
+    
+    return {
+        'filtered_df': filtered_df.reset_index(drop=True),
+        'stats': stats,
+        'valid_stations': list(estaciones_finales),
+        'valid_connections': conexiones_validas
+    }
+
+def plot_stations_map_by_components(df, connected_components, figsize=(9, 5)):
+    """
+    Grafica todas las estaciones en un mapa basado en latitud/longitud,
+    coloreando según los componentes conectados.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de estaciones (debe tener lat/lon)
+        connected_components (list): Lista de sets con estaciones conectadas
+        figsize (tuple): Tamaño de la figura
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+    import numpy as np
+    
+    # Buscar columnas de coordenadas (varias posibilidades)
+    lat_cols = ['lat_estacion_destino', 'latitud_destino', 'lat_destino', 'latitude', 'lat']
+    lon_cols = ['long_estacion_destino', 'longitud_destino', 'lon_destino', 'longitude', 'lon', 'long']
+    
+    lat_col = None
+    lon_col = None
+    
+    for col in lat_cols:
+        if col in df.columns:
+            lat_col = col
+            break
+    
+    for col in lon_cols:
+        if col in df.columns:
+            lon_col = col
+            break
+    
+    if lat_col is None or lon_col is None:
+        raise ValueError(f"No se encontraron columnas de coordenadas. Disponibles: {df.columns.tolist()}")
+    
+    # Obtener datos únicos de estaciones con coordenadas
+    station_cols = ['id_estacion_destino', lat_col, lon_col]
+    if 'nombre_estacion_destino' in df.columns:
+        station_cols.append('nombre_estacion_destino')
+    
+    stations_data = df[station_cols].drop_duplicates(subset=['id_estacion_destino'])
+    stations_data = stations_data.dropna(subset=[lat_col, lon_col])
+    
+    # Convertir IDs a int para matching
+    stations_data['id_estacion_destino'] = stations_data['id_estacion_destino'].astype(int)
+    
+    print(f"Estaciones con coordenadas válidas: {len(stations_data)}")
+    print(f"Componentes conectados: {len(connected_components)}")
+    
+    # Crear mapa de colores
+    if len(connected_components) <= 10:
+        colors = plt.cm.tab10(np.linspace(0, 1, len(connected_components)))
+    else:
+        colors = plt.cm.Set3(np.linspace(0, 1, len(connected_components)))
+    
+    # Color por defecto para estaciones no conectadas
+    default_color = 'lightgray'
+    
+    # Crear el mapa de estación -> color
+    station_colors = {}
+    
+    for i, component in enumerate(connected_components):
+        # Convertir component a set de enteros
+        component_ids = {int(float(station_id)) for station_id in component}
+        for station_id in component_ids:
+            station_colors[station_id] = colors[i]
+    
+    # Preparar datos para plotting
+    plot_colors = []
+    plot_sizes = []
+    component_labels = []
+    
+    for _, station in stations_data.iterrows():
+        station_id = int(station['id_estacion_destino'])
+        
+        if station_id in station_colors:
+            # Encontrar en qué componente está
+            component_idx = None
+            for i, component in enumerate(connected_components):
+                component_ids = {int(float(sid)) for sid in component}
+                if station_id in component_ids:
+                    component_idx = i
+                    break
+            
+            plot_colors.append(station_colors[station_id])
+            plot_sizes.append(100)  # Tamaño grande para estaciones conectadas
+            component_labels.append(f"Componente {component_idx + 1}")
+        else:
+            plot_colors.append(default_color)
+            plot_sizes.append(30)  # Tamaño pequeño para estaciones aisladas
+            component_labels.append("Sin conexión (no cumple con min_trips)")
+    
+    # Crear el gráfico
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Scatter plot principal
+    scatter = ax.scatter(stations_data[lon_col], stations_data[lat_col], 
+                        c=plot_colors, s=plot_sizes, alpha=0.7, edgecolors='black', linewidth=0.5)
+    
+    # Configurar el mapa
+    ax.set_xlabel('Longitud')
+    ax.set_ylabel('Latitud')
+    ax.set_title(f'Mapa de Estaciones por Componentes Conectados\n({len(connected_components)} componentes, {len(stations_data)} estaciones)')
+    ax.grid(True, alpha=0.3)
+    
+    # Crear leyenda personalizada
+    legend_elements = []
+    
+    # Agregar componentes conectados a la leyenda
+    for i, component in enumerate(connected_components):
+        component_size = len(component)
+        legend_elements.append(
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], 
+                      markersize=10, label=f'Componente {i+1} ({component_size} estaciones)')
+        )
+    
+    # Agregar estaciones sin conexión si existen
+    unconnected_count = len(stations_data) - sum(len(comp) for comp in connected_components)
+    if unconnected_count > 0:
+        legend_elements.append(
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=default_color, 
+                      markersize=6, label=f'Sin conexión ({unconnected_count} estaciones)')
+        )
+    
+    # Mostrar leyenda
+    ax.legend(handles=legend_elements, loc='best', bbox_to_anchor=(1.05, 1))
+    
+    plt.tight_layout()
+    
+    # Estadísticas
+    print(f"\n=== ESTADÍSTICAS DEL MAPA ===")
+    print(f"Total estaciones graficadas: {len(stations_data)}")
+    print(f"Estaciones en componentes conectados: {sum(len(comp) for comp in connected_components)}")
+    print(f"Estaciones sin conexión: {unconnected_count}")
+    
+    # Detalles por componente
+    print(f"\n=== DETALLES POR COMPONENTE ===")
+    for i, component in enumerate(connected_components):
+        component_size = len(component)
+        print(f"Componente {i+1}: {component_size} estaciones")
+        if component_size <= 10:  # Mostrar IDs solo si es pequeño
+            component_ids = sorted([int(float(sid)) for sid in component])
+            print(f"  IDs: {component_ids}")
+    
+    plt.show()
+    
+    return {
+        'stations_data': stations_data,
+        'station_colors': station_colors,
+        'total_stations': len(stations_data),
+        'connected_stations': sum(len(comp) for comp in connected_components),
+        'unconnected_stations': unconnected_count
+    }

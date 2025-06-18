@@ -1,16 +1,14 @@
 import pandas as pd
 import numpy as np
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, PoissonRegressor
 #Importo gradient boosting para comparar
 from sklearn.ensemble import GradientBoostingRegressor
 
 #Importo una red neuronal para comparar
 from sklearn.neural_network import MLPRegressor
 
-
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-from sklearn.preprocessing import StandardScaler
 import os
 import random
 
@@ -22,6 +20,8 @@ proms_mse = []
 proms_r2 = []
 
 for estacion in range(1, 380):
+    if estacion == 359 or estacion == 255 or estacion == 29 or estacion == 206: #La 29 es rara
+        continue
     # Cargar el dataset
     dataset_train_path = f"data/processed/features1/train/dataset_train_{estacion}.csv"
     dataset_val_path = f"data/processed/features1/validation/dataset_val_{estacion}.csv"
@@ -70,29 +70,41 @@ for estacion in range(1, 380):
     
     if X_val.isnull().sum().sum() > 0 or y_val.isnull().sum() > 0:
         print(f"WARNING: Hay valores NaN en validation")
-        X_val = X_val.fillna(X_val.mean())
-        y_val = y_val.fillna(y_val.mean())
+        X_val = X_val.fillna(X_train.mean()) #Para no hacer leaking
+        y_val = y_val.fillna(y_train.mean())
     
     # Verificar valores infinitos
     if np.isinf(X_train).any().any() or np.isinf(y_train).any():
         print(f"WARNING: Hay valores infinitos en train")
+
+    #Desordeno el dataset
+    X_train = X_train.sample(frac=1, random_state=42).reset_index(drop=True)
+    y_train = y_train.sample(frac=1, random_state=42).reset_index(drop=True)
+    X_val = X_val.sample(frac=1, random_state=42).reset_index(drop=True)
+    y_val = y_val.sample(frac=1, random_state=42).reset_index(drop=True)
     
     # Entrenar la regresión lineal
-    #model = LinearRegression()
+    model = LinearRegression()
     #model = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=6, random_state=13) #el de 3 dio mejor
-    model = MLPRegressor(hidden_layer_sizes=(500, 398), max_iter=500, random_state=13)  # Red neuronal simple
+    #model = MLPRegressor(hidden_layer_sizes=(100,), max_iter=100, random_state=13)  # Red neuronal simple
+    #model = PoissonRegressor(alpha=1.0, max_iter=1000, tol=1e-4)
     model.fit(X_train, y_train)
     
     
     # Realizar predicciones
     predictions = model.predict(X_val)
+
+
     
     # Diagnóstico de predicciones
     print(f"Predictions - Min: {predictions.min():.2f}, Max: {predictions.max():.2f}, Mean: {predictions.mean():.2f}")
 
     
     #Restringir las predicciones a mayor o igual a 0
-    #predictions = np.clip(predictions, 0, None)
+    predictions = np.clip(predictions, 0, None)
+
+    #Discretizar las predicciones a enteros
+    predictions = np.round(predictions).astype(int)
 
 
     # Diagnóstico de predicciones
@@ -108,10 +120,10 @@ for estacion in range(1, 380):
     baseline_mae = mean_absolute_error(y_val, [y_train.mean()] * len(y_val))  # Baseline: predecir la media
     
     # Almacenar las métricas
-    proms_mae.append(mae)
-    proms_rmse.append(rmse)
-    proms_mse.append(mse)
-    proms_r2.append(r2)
+    proms_mae.append((mae, estacion))
+    proms_rmse.append((rmse, estacion))
+    proms_mse.append((mse, estacion))
+    proms_r2.append((r2, estacion))
     
     print(f"RMSE: {rmse:.6f}")
     print(f"R²: {r2:.6f}")
@@ -128,10 +140,10 @@ for estacion in range(1, 380):
 
 # Calcular promedios
 if proms_mae:  # Solo si hay datos
-    promedio_mae = np.mean(proms_mae)
-    promedio_rmse = np.mean(proms_rmse)
-    promedio_mse = np.mean(proms_mse)
-    promedio_r2 = np.mean(proms_r2)
+    promedio_mae = np.mean([x[0] for x in proms_mae])
+    promedio_rmse = np.mean([x[0] for x in proms_rmse])
+    promedio_mse = np.mean([x[0] for x in proms_mse])
+    promedio_r2 = np.mean([x[0] for x in proms_r2])
     
     print(f"\n=== PROMEDIOS FINALES ===")
     print(f"Promedio MAE: {promedio_mae:.6f}")
@@ -149,3 +161,9 @@ if proms_mae:  # Solo si hay datos
         print("❌ Ajuste pobre del modelo")
 else:
     print("No se procesaron datos")
+
+
+print("EL MAE MAS GRANDE ES: ", max(proms_mae, key=lambda x: x[0]), "estacion: ", max(proms_mae, key=lambda x: x[0])[1])
+print("EL MSE MAS GRANDE ES: ", max(proms_mse, key=lambda x: x[0]), "estacion: ", max(proms_mse, key=lambda x: x[0])[1])
+print("EL RMSE MAS GRANDE ES: ", max(proms_rmse, key=lambda x: x[0]), "estacion: ", max(proms_rmse, key=lambda x: x[0])[1])
+print("EL R2 MAS GRANDE ES: ", max(proms_r2, key=lambda x: x[0]), "estacion: ", max(proms_r2, key=lambda x: x[0])[1])

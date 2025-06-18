@@ -109,6 +109,7 @@ def cut_recorridos(df, fecha_limite):
     return df_filtered, eliminated_rows
 
 
+
 def limpiar_recorridos(csv_2024, csv_2023, csv_2022, csv_2021, csv_2020=None):
     """
     Concatenates multiple CSV files containing trip data into a single DataFrame,
@@ -261,3 +262,81 @@ def unificar_datasets(df_recorridos, df_usuarios):
     print(f"Porcentaje de match: {(recorridos_con_usuario/total_recorridos)*100:.2f}%")
     
     return df_unified
+
+
+def cut_df(df, start_date=None, end_date=None):
+    """
+    Corta el DataFrame entre fechas específicas. Si alguna fecha es None, no aplica ese filtro.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con users y recorridos unificados
+        start_date (str, optional): Fecha de inicio en formato 'YYYY-MM-DD'. Si es None, no filtra por inicio.
+        end_date (str, optional): Fecha de fin en formato 'YYYY-MM-DD'. Si es None, no filtra por fin.
+    
+    Returns:
+        pd.DataFrame: DataFrame filtrado entre las fechas especificadas
+    """
+    if 'fecha_destino_recorrido' not in df.columns:
+        raise ValueError("El DataFrame debe contener la columna 'fecha_destino_recorrido'.")
+    
+    df_copy = df.copy()
+    df_copy['fecha_destino_recorrido'] = pd.to_datetime(df_copy['fecha_destino_recorrido'])
+    
+    # Aplicar filtro de fecha inicial si se proporciona
+    if start_date is not None:
+        start_date = pd.to_datetime(start_date)
+        df_copy = df_copy[df_copy['fecha_destino_recorrido'] >= start_date]
+    
+    # Aplicar filtro de fecha final si se proporciona
+    if end_date is not None:
+        end_date = pd.to_datetime(end_date)
+        df_copy = df_copy[df_copy['fecha_destino_recorrido'] <= end_date]
+    
+    return df_copy.reset_index(drop=True)
+
+def remove_stations(df, removed_stations):
+    """
+    Elimina del DataFrame todas las filas donde el origen O destino sea una estación de la lista de estaciones removidas.
+    Versión consistente con el filtrado por min_trips.
+    
+    Args:
+        df (pd.DataFrame): DataFrame con datos de recorridos
+        removed_stations (list): Lista de IDs de estaciones a remover
+    
+    Returns:
+        pd.DataFrame: DataFrame filtrado sin viajes que involucren las estaciones removidas
+    """
+    # Verificar columnas necesarias
+    if not all(col in df.columns for col in ['id_estacion_origen', 'id_estacion_destino']):
+        raise ValueError("El DataFrame debe contener columnas de origen y destino")
+    
+    initial_count = len(df)
+    
+    # Filtrar filas donde NI el origen NI el destino están en removed_stations
+    filtered_df = df[
+        ~df['id_estacion_origen'].isin(removed_stations) & 
+        ~df['id_estacion_destino'].isin(removed_stations)
+    ].reset_index(drop=True)
+    
+    # Calcular estadísticas
+    removed_count = initial_count - len(filtered_df)
+    
+    # Obtener lista real de estaciones efectivamente removidas (puede ser diferente a removed_stations)
+    original_stations = set(df['id_estacion_origen']).union(set(df['id_estacion_destino']))
+    remaining_stations = set(filtered_df['id_estacion_origen']).union(set(filtered_df['id_estacion_destino']))
+    actually_removed = original_stations - remaining_stations
+    
+    # Reporte detallado
+    print("\n=== RESUMEN DE FILTRADO ===")
+    print(f"Estaciones originales: {len(original_stations)}")
+    print(f"Estaciones removidas solicitadas: {len(removed_stations)}")
+    print(f"Estaciones efectivamente removidas: {len(actually_removed)}")
+    print(f"\nViajes originales: {initial_count:,}")
+    print(f"Viajes conservados: {len(filtered_df):,} ({(len(filtered_df)/initial_count)*100:.1f}%)")
+    print(f"Viajes eliminados: {removed_count:,}")
+    
+    if actually_removed:
+        print("\nEstaciones eliminadas efectivamente:")
+        print(sorted(actually_removed))
+    
+    return filtered_df
