@@ -296,26 +296,47 @@ def cut_df(df, start_date=None, end_date=None):
 
 def remove_stations(df, removed_stations):
     """
-    Elimina del DataFrame todas las filas donde el destino sea una estación de la lista de estaciones removidas.
+    Elimina del DataFrame todas las filas donde el origen O destino sea una estación de la lista de estaciones removidas.
+    Versión consistente con el filtrado por min_trips.
     
     Args:
         df (pd.DataFrame): DataFrame con datos de recorridos
         removed_stations (list): Lista de IDs de estaciones a remover
     
     Returns:
-        pd.DataFrame: DataFrame filtrado sin las estaciones removidas
+        pd.DataFrame: DataFrame filtrado sin viajes que involucren las estaciones removidas
     """
-    if 'id_estacion_destino' not in df.columns:
-        raise ValueError("El DataFrame debe contener la columna 'id_estacion_destino'.")
+    # Verificar columnas necesarias
+    if not all(col in df.columns for col in ['id_estacion_origen', 'id_estacion_destino']):
+        raise ValueError("El DataFrame debe contener columnas de origen y destino")
     
     initial_count = len(df)
     
-    # Filtrar las filas que NO tienen destino en las estaciones removidas
-    filtered_df = df[~df['id_estacion_destino'].isin(removed_stations)].reset_index(drop=True)
+    # Filtrar filas donde NI el origen NI el destino están en removed_stations
+    filtered_df = df[
+        ~df['id_estacion_origen'].isin(removed_stations) & 
+        ~df['id_estacion_destino'].isin(removed_stations)
+    ].reset_index(drop=True)
     
+    # Calcular estadísticas
     removed_count = initial_count - len(filtered_df)
     
-    print(f"Se eliminaron {removed_count} filas que llegaban a estaciones removidas.")
-    print(f"Dataset original: {initial_count} filas → Dataset filtrado: {len(filtered_df)} filas")
+    # Obtener lista real de estaciones efectivamente removidas (puede ser diferente a removed_stations)
+    original_stations = set(df['id_estacion_origen']).union(set(df['id_estacion_destino']))
+    remaining_stations = set(filtered_df['id_estacion_origen']).union(set(filtered_df['id_estacion_destino']))
+    actually_removed = original_stations - remaining_stations
     
-    return filtered_df    
+    # Reporte detallado
+    print("\n=== RESUMEN DE FILTRADO ===")
+    print(f"Estaciones originales: {len(original_stations)}")
+    print(f"Estaciones removidas solicitadas: {len(removed_stations)}")
+    print(f"Estaciones efectivamente removidas: {len(actually_removed)}")
+    print(f"\nViajes originales: {initial_count:,}")
+    print(f"Viajes conservados: {len(filtered_df):,} ({(len(filtered_df)/initial_count)*100:.1f}%)")
+    print(f"Viajes eliminados: {removed_count:,}")
+    
+    if actually_removed:
+        print("\nEstaciones eliminadas efectivamente:")
+        print(sorted(actually_removed))
+    
+    return filtered_df

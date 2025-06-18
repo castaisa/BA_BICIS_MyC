@@ -364,7 +364,7 @@ def plot_station_network_optimized(df, min_trips=5, figsize=(12, 8), layout_algo
         }
     }
 
-def filter_stations_by_min_trips(df, min_trips=5):
+def filter_stations_by_min_trips(df, min_trips=5, show_stats=True):
     """
     Filtra conexiones entre estaciones manteniendo aquellas que cumplen el mínimo de viajes,
     similar al comportamiento de plot_station_network_optimized.
@@ -413,18 +413,19 @@ def filter_stations_by_min_trips(df, min_trips=5):
     }
     
     # 6. Reporte detallado
-    print(f"=== FILTRADO (min_trips={min_trips}) ===")
-    print(f"Viajes originales: {stats['initial_trips']:,}")
-    print(f"Viajes conservados: {stats['final_trips']:,} ({stats['retention_trips']:.2f}%)")
-    print(f"\nEstaciones originales: {stats['initial_stations']}")
-    print(f"Estaciones conservadas: {stats['final_stations']} ({stats['retention_stations']:.2f}%)")
-    print(f"Estaciones eliminadas: {stats['removed_stations']}")
-    print(f"\nConexiones originales: {stats['initial_connections']}")
-    print(f"Conexiones conservadas: {stats['final_connections']}")
-    
-    if stats['removed_stations'] > 0:
-        print(f"\nEstaciones eliminadas (sin conexiones válidas):")
-        print(stats['removed_stations_list'])
+    if show_stats:
+        print(f"=== FILTRADO (min_trips={min_trips}) ===")
+        print(f"Viajes originales: {stats['initial_trips']:,}")
+        print(f"Viajes conservados: {stats['final_trips']:,} ({stats['retention_trips']:.2f}%)")
+        print(f"\nEstaciones originales: {stats['initial_stations']}")
+        print(f"Estaciones conservadas: {stats['final_stations']} ({stats['retention_stations']:.2f}%)")
+        print(f"Estaciones eliminadas: {stats['removed_stations']}")
+        print(f"\nConexiones originales: {stats['initial_connections']}")
+        print(f"Conexiones conservadas: {stats['final_connections']}")
+        
+        if stats['removed_stations'] > 0:
+            print(f"\nEstaciones eliminadas (sin conexiones válidas):")
+            print(stats['removed_stations_list'])
     
     return {
         'filtered_df': filtered_df.reset_index(drop=True),
