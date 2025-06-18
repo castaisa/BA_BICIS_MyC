@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import networkx as nx
 from math import radians, sin, cos, sqrt, atan2
+import seaborn as sns
 
 
 
@@ -361,81 +362,3 @@ def plot_station_network_optimized(df, min_trips=5, figsize=(12, 8), layout_algo
         }
     }
 
-import pandas as pd
-import numpy as np
-from math import radians, sin, cos, sqrt, atan2
-import seaborn as sns
-import matplotlib.pyplot as plt
-from scipy.spatial.distance import squareform
-
-def haversine(lon1, lat1, lon2, lat2):
-    """Calcula la distancia en km entre dos puntos geográficos"""
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    dlon = lon2 - lon1 
-    dlat = lat2 - lat1 
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-    return 6371 * 2 * atan2(sqrt(a), sqrt(1-a))
-
-def generar_matriz_distancias(datos):
-    """
-    Genera matriz de distancias y estadísticas entre estaciones
-    
-    Args:
-        datos: DataFrame con columnas de lat/long de estaciones
-        
-    Returns:
-        dict: Contiene matriz de distancias, estadísticas y gráficos
-    """
-    # Extraer estaciones únicas
-    estaciones = pd.concat([
-        datos[['id_estacion_origen', 'nombre_estacion_origen', 'long_estacion_origen', 'lat_estacion_origen']]
-            .rename(columns={'id_estacion_origen': 'id', 'nombre_estacion_origen': 'nombre', 
-                            'long_estacion_origen': 'long', 'lat_estacion_origen': 'lat'}),
-        datos[['id_estacion_destino', 'nombre_estacion_destino', 'long_estacion_destino', 'lat_estacion_destino']]
-            .rename(columns={'id_estacion_destino': 'id', 'nombre_estacion_destino': 'nombre', 
-                            'long_estacion_destino': 'long', 'lat_estacion_destino': 'lat'})
-    ]).drop_duplicates('id').sort_values('id')
-
-    # Crear matriz de distancias
-    n = len(estaciones)
-    dist_matrix = np.zeros((n, n))
-    
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                dist_matrix[i][j] = haversine(
-                    estaciones.iloc[i]['long'],
-                    estaciones.iloc[i]['lat'],
-                    estaciones.iloc[j]['long'],
-                    estaciones.iloc[j]['lat']
-                )
-    
-    # Convertir a DataFrame con nombres de estaciones
-    dist_df = pd.DataFrame(dist_matrix, 
-                         index=estaciones['nombre'].values,
-                         columns=estaciones['nombre'].values)
-    
-    # Estadísticas relevantes
-    stats = {
-        'distancia_promedio': np.mean(dist_matrix[dist_matrix > 0]),
-        'distancia_maxima': np.max(dist_matrix),
-        'distancia_minima': np.min(dist_matrix[dist_matrix > 0]),
-        'estaciones_mas_cercanas': estaciones.iloc[np.unravel_index(np.argmin(dist_matrix + np.eye(n)*1e6), dist_matrix.shape)]['nombre'].values,
-        'estaciones_mas_lejanas': estaciones.iloc[np.unravel_index(np.argmax(dist_matrix), dist_matrix.shape)]['nombre'].values,
-        'percentiles': np.percentile(dist_matrix[dist_matrix > 0], [25, 50, 75, 90])
-    }
-    
-    # Visualización
-    plt.figure(figsize=(12, 10))
-    sns.heatmap(dist_df, cmap='viridis_r', 
-                mask=np.eye(len(dist_df), dtype=bool),
-                square=True, linewidths=.5)
-    plt.title('Matriz de Distancias entre Estaciones (km)')
-    plt.tight_layout()
-    plt.show()
-    
-    return {
-        'matriz_distancias': dist_df,
-        'estadisticas': stats,
-        'estaciones': estaciones
-    }
