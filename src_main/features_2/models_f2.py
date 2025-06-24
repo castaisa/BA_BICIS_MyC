@@ -9,3 +9,9 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import AdaBoostClassifier
+
+def linear_regression(x_train, y_train, x_val):
+    model = LinearRegression()
+    model.fit(x_train, y_train)
+    y_pred = model.predict(x_val)
+    return y_pred
