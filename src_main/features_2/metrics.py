@@ -354,3 +354,76 @@ def grafico_analisis_completo(y_true, y_pred, nombre_modelo="Modelo", figsize=(1
     
     plt.tight_layout()
     plt.show()
+
+
+def tabla_metricas_modelos(modelos_predicciones, y_true):
+    """
+    Función simple que recibe un diccionario con modelos y predicciones 
+    y genera una tabla prolija de métricas.
+    
+    Args:
+        modelos_predicciones: Dict con {nombre_modelo: predicciones}
+        y_true: Valores reales
+    
+    Returns:
+        pd.DataFrame: Tabla prolija con métricas de todos los modelos
+    """
+    
+    # Convertir y_true a numpy array
+    y_true = np.array(y_true)
+    
+    # Lista para almacenar resultados
+    resultados = []
+    
+    # Calcular métricas para cada modelo
+    for nombre_modelo, y_pred in modelos_predicciones.items():
+        y_pred = np.array(y_pred)
+        
+        # Calcular métricas principales
+        mae = mean_absolute_error(y_true, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+        r2 = r2_score(y_true, y_pred)
+        
+        # MAPE con manejo de división por cero
+        try:
+            mape = mean_absolute_percentage_error(y_true, y_pred) * 100
+        except:
+            mask = y_true != 0
+            mape = np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100 if np.any(mask) else np.inf
+        
+        # Correlación
+        correlation = np.corrcoef(y_true, y_pred)[0, 1] if len(y_true) > 1 else np.nan
+        
+        # Agregar a resultados
+        resultados.append({
+            'Modelo': nombre_modelo,
+            'MAE': round(mae, 4),
+            'RMSE': round(rmse, 4),
+            'R²': round(r2, 4),
+            'MAPE (%)': round(mape, 2),
+            'Correlación': round(correlation, 4),
+            'N_Muestras': len(y_true)
+        })
+    
+    # Crear DataFrame
+    df = pd.DataFrame(resultados)
+    
+    # Ordenar por R² de mayor a menor
+    df = df.sort_values('R²', ascending=False).reset_index(drop=True)
+    
+    # Agregar ranking
+    df.insert(0, 'Rank', range(1, len(df) + 1))
+    
+    # # Mostrar tabla prolija
+    # print("\n" + "="*80)
+    # print("📊 TABLA DE MÉTRICAS DE MODELOS")
+    # print("="*80)
+    # print(df.to_string(index=False, float_format='%.4f'))
+    # print("="*80)
+    
+    # Mostrar mejor modelo
+    mejor_modelo = df.iloc[0]
+    print(f"\n🏆 MEJOR MODELO: {mejor_modelo['Modelo']}")
+    print(f"   R² = {mejor_modelo['R²']:.4f} | RMSE = {mejor_modelo['RMSE']:.4f} | MAE = {mejor_modelo['MAE']:.4f}")
+    
+    return df
