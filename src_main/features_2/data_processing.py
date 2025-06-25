@@ -429,7 +429,6 @@ def crear_dataset_completo_estacion(df, estacion_id, verbose=True):
     return X, y, feature_names, df_filtrado
 
 
-
 def crear_dataset_estacion_especifica(df, estacion_id, verbose=True):
     """
     Función de conveniencia para crear un dataset enfocado en una sola estación.
