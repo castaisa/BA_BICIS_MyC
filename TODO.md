@@ -16,8 +16,13 @@ TO DO VIEJO:
 
 - borar las estcines que se crean en 2024 (val y test)
 
-TO DO:
+DONE:
 - PCA
+
+IN PROGRESS:
+- modelo solo con el delta t anterior (isa)
+
+TO DO:
+- gráfico de las métricas vs cantidad de viajes que tenia esa estación
 - lo de predecir con vector
 - funcion que agarra features 2 y arma pero puede tener los targets de varias estaciones
-- modelo solo con el delta t anterior
