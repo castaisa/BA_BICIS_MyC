@@ -168,7 +168,7 @@ def crear_tabla_metricas(metricas_dict, nombre_modelo="Modelo", mostrar_estadist
 
 def evaluar_modelo_regresion(y_true, y_pred, nombre_modelo="Modelo", 
                            mostrar_tabla=True, mostrar_estadisticas=True,
-                           mostrar_plot=True, analisis_completo=False, figsize=(10, 6)):
+                           mostrar_plot=True, analisis_completo=False, figsize=(8, 6)):
     """
     Evalúa un modelo de regresión y muestra métricas en tabla.
     
@@ -202,7 +202,7 @@ def evaluar_modelo_regresion(y_true, y_pred, nombre_modelo="Modelo",
     
     # Mostrar análisis completo o plot básico
     if analisis_completo:
-        grafico_analisis_completo(y_true, y_pred, nombre_modelo, figsize=(15, 10))
+        grafico_analisis_completo(y_true, y_pred, nombre_modelo)
     elif mostrar_plot:
         _plot_predicciones_vs_reales(y_true, y_pred, nombre_modelo, figsize)
     
@@ -265,7 +265,7 @@ def _plot_predicciones_vs_reales(y_true, y_pred, nombre_modelo, figsize):
     plt.show()
 
 
-def grafico_analisis_completo(y_true, y_pred, nombre_modelo="Modelo", figsize=(15, 10)):
+def grafico_analisis_completo(y_true, y_pred, nombre_modelo="Modelo", figsize=(8, 6)):
     """
     Crea un análisis gráfico completo del modelo con múltiples visualizaciones.
     
@@ -427,3 +427,414 @@ def tabla_metricas_modelos(modelos_predicciones, y_true):
     print(f"   R² = {mejor_modelo['R²']:.4f} | RMSE = {mejor_modelo['RMSE']:.4f} | MAE = {mejor_modelo['MAE']:.4f}")
     
     return df
+
+def estadisticas_metricas_por_estacion(y_true_lista, y_pred_lista, estaciones_ids, 
+                                       mostrar_tabla=True, exportar_csv=None):
+    """
+    Calcula estadísticas agregadas de métricas por estación.
+    
+    Args:
+        y_true_lista: Lista de valores verdaderos
+        y_pred_lista: Lista de predicciones correspondientes
+        estaciones_ids: Lista de IDs de estaciones correspondientes
+        mostrar_tabla: Si mostrar la tabla de estadísticas
+        exportar_csv: Ruta para exportar resultados a CSV (opcional)
+    
+    Returns:
+        pd.DataFrame: Tabla con estadísticas agregadas por métrica
+    """
+    
+    # Convertir a arrays numpy de una vez (más eficiente)
+    y_true_array = np.asarray(y_true_lista, dtype=np.float64)
+    y_pred_array = np.asarray(y_pred_lista, dtype=np.float64)
+    estaciones_array = np.asarray(estaciones_ids, dtype=np.int32)
+    
+    # Verificar longitudes
+    n_samples = len(y_true_array)
+    if not (len(y_pred_array) == len(estaciones_array) == n_samples):
+        raise ValueError("Todas las listas deben tener la misma longitud")
+    
+    # Obtener estaciones únicas y ordenarlas
+    estaciones_unicas = np.unique(estaciones_array)
+    n_estaciones = len(estaciones_unicas)
+    
+    if mostrar_tabla:
+        print(f"\n📊 Calculando métricas para {n_estaciones} estaciones...")
+        print(f"📈 Total de muestras: {n_samples:,}")
+    
+    # Calcular métricas usando vectorización (más eficiente)
+    metricas_por_estacion = {}
+    
+    for estacion in estaciones_unicas:
+        # Usar máscara booleana (más eficiente que filtros)
+        mask = estaciones_array == estacion
+        y_true_est = y_true_array[mask]
+        y_pred_est = y_pred_array[mask]
+        
+        # Calcular métricas básicas
+        residuos = y_true_est - y_pred_est
+        abs_residuos = np.abs(residuos)
+        
+        n_est = len(y_true_est)
+        mae = np.mean(abs_residuos)
+        mse = np.mean(residuos**2)
+        rmse = np.sqrt(mse)
+        
+        # R² optimizado
+        ss_res = np.sum(residuos**2)
+        ss_tot = np.sum((y_true_est - np.mean(y_true_est))**2)
+        r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        
+        # MAPE robusto
+        mask_nonzero = y_true_est != 0
+        if np.any(mask_nonzero):
+            mape = np.mean(np.abs(residuos[mask_nonzero] / y_true_est[mask_nonzero])) * 100
+        else:
+            mape = np.inf
+        
+        # Métricas adicionales optimizadas
+        max_error = np.max(abs_residuos)
+        min_error = np.min(abs_residuos)
+        median_error = np.median(abs_residuos)
+        std_residuos = np.std(residuos)
+        
+        # Correlación optimizada
+        if n_est > 1:
+            correlation = np.corrcoef(y_true_est, y_pred_est)[0, 1]
+        else:
+            correlation = np.nan
+        
+        # Bias y métricas estadísticas
+        bias = np.mean(residuos)
+        mean_true = np.mean(y_true_est)
+        mean_pred = np.mean(y_pred_est)
+        std_true = np.std(y_true_est)
+        std_pred = np.std(y_pred_est)
+        
+        # Explained variance optimizada
+        var_residuos = np.var(residuos)
+        var_true = np.var(y_true_est)
+        explained_var = 1 - (var_residuos / var_true) if var_true > 0 else 0
+        
+        # Métricas adicionales avanzadas
+        # Error relativo medio
+        relative_error = np.mean(abs_residuos / np.maximum(np.abs(y_true_est), 1e-8)) * 100
+        
+        # Symmetric MAPE (menos sensible a outliers)
+        smape = np.mean(2 * abs_residuos / (np.abs(y_true_est) + np.abs(y_pred_est) + 1e-8)) * 100
+        
+        # Mean Absolute Scaled Error (MASE) aproximado
+        naive_forecast_error = np.mean(np.abs(np.diff(y_true_est))) if n_est > 1 else 1
+        mase = mae / naive_forecast_error if naive_forecast_error > 0 else np.inf
+        
+        # Quantile errors
+        q25_error = np.percentile(abs_residuos, 25)
+        q75_error = np.percentile(abs_residuos, 75)
+        iqr_error = q75_error - q25_error
+        
+        # Normalized RMSE
+        nrmse = rmse / (np.max(y_true_est) - np.min(y_true_est)) * 100 if np.max(y_true_est) != np.min(y_true_est) else np.inf
+        
+        # Coefficient of Variation of RMSE
+        cv_rmse = rmse / mean_true * 100 if mean_true != 0 else np.inf
+        
+        # Almacenar métricas con redondeo a 4 cifras significativas
+        def round_significant(x, sig_figs=4):
+            if not np.isfinite(x) or x == 0:
+                return x
+            return round(x, sig_figs - int(np.floor(np.log10(abs(x)))) - 1)
+        
+        metricas_por_estacion[estacion] = {
+            'MAE': round_significant(mae),
+            'RMSE': round_significant(rmse),
+            'R²': round_significant(r2),
+            'MAPE': round_significant(mape),
+            'Correlación': round_significant(correlation),
+            'N_Muestras': n_est
+        }
+    
+    # Métricas para calcular estadísticas (simplificado)
+    metricas_principales = ['MAE', 'RMSE', 'R²', 'MAPE', 'Correlación']
+    
+    # Calcular estadísticas de forma vectorizada (más eficiente)
+    estadisticas_resultados = []
+    
+    for metrica in metricas_principales:
+        # Extraer valores válidos de forma eficiente
+        valores_y_estaciones = [
+            (metricas_por_estacion[est][metrica], est)
+            for est in estaciones_unicas
+            if metrica in metricas_por_estacion[est] and np.isfinite(metricas_por_estacion[est][metrica])
+        ]
+        
+        if not valores_y_estaciones:
+            continue
+        
+        valores, estaciones_validas = zip(*valores_y_estaciones)
+        valores_array = np.array(valores)
+        
+        # Calcular estadísticas usando numpy (vectorizado)
+        min_idx = np.argmin(valores_array)
+        max_idx = np.argmax(valores_array)
+        
+        def round_significant(x, sig_figs=4):
+            if not np.isfinite(x) or x == 0:
+                return x
+            return round(x, sig_figs - int(np.floor(np.log10(abs(x)))) - 1)
+        
+        estadisticas = {
+            'Métrica': metrica,
+            'Mínimo': round_significant(valores_array[min_idx]),
+            'Estación_Min': estaciones_validas[min_idx],
+            'Máximo': round_significant(valores_array[max_idx]),
+            'Estación_Max': estaciones_validas[max_idx],
+            'Promedio': round_significant(np.mean(valores_array)),
+            'Mediana': round_significant(np.median(valores_array)),
+            'Desv_Est': round_significant(np.std(valores_array)),
+            'P25': round_significant(np.percentile(valores_array, 25)),
+            'P75': round_significant(np.percentile(valores_array, 75)),
+            'Rango': round_significant(np.ptp(valores_array)),  # peak-to-peak
+            'CV_%': round_significant(np.std(valores_array) / np.mean(valores_array) * 100) if np.mean(valores_array) != 0 else np.inf,
+            'N_Estaciones': len(valores_array)
+        }
+        
+        estadisticas_resultados.append(estadisticas)
+    
+    # Crear DataFrame optimizado
+    df_estadisticas = pd.DataFrame(estadisticas_resultados)
+    
+    # Mostrar tabla si se solicita
+    if mostrar_tabla:
+        # print("\n" + "="*120)
+        # print("📊 ESTADÍSTICAS AGREGADAS DE MÉTRICAS POR ESTACIÓN")
+        # print("="*120)
+        
+        # Mostrar tabla con formato optimizado
+        # with pd.option_context('display.max_columns', None, 'display.width', None):
+        #     print(df_estadisticas.to_string(index=False, float_format='%.4g'))
+        
+        print("="*120)
+        
+        # Resumen optimizado
+        print(f"\n📈 RESUMEN OPTIMIZADO:")
+        print(f"   • Estaciones analizadas: {n_estaciones}")
+        print(f"   • Muestras procesadas: {n_samples:,}")
+        print(f"   • Promedio muestras/estación: {n_samples/n_estaciones:.1f}")
+        print(f"   • Métricas calculadas: {len(metricas_principales)}")
+        
+        # Destacar mejores y peores estaciones con métricas simplificadas
+        if not df_estadisticas.empty:
+            metricas_destacar = ['R²', 'RMSE', 'MAE', 'MAPE', 'Correlación']
+            
+            for metrica in metricas_destacar:
+                row = df_estadisticas[df_estadisticas['Métrica'] == metrica]
+                if not row.empty:
+                    r = row.iloc[0]
+                    if metrica in ['R²', 'Correlación']:
+                        print(f"\n🏆 {metrica} - MEJOR: Est.{r['Estación_Max']} ({r['Máximo']:.4g}) | PEOR: Est.{r['Estación_Min']} ({r['Mínimo']:.4g})")
+                    else:
+                        print(f"\n✅ {metrica} - MEJOR: Est.{r['Estación_Min']} ({r['Mínimo']:.4g}) | PEOR: Est.{r['Estación_Max']} ({r['Máximo']:.4g})")
+    
+    # Exportar con manejo de errores optimizado
+    if exportar_csv:
+        try:
+            df_estadisticas.to_csv(exportar_csv, index=False, float_format='%.4g')
+            if mostrar_tabla:
+                print(f"\n💾 Estadísticas exportadas a: {exportar_csv}")
+        except Exception as e:
+            if mostrar_tabla:
+                print(f"\n❌ Error al exportar CSV: {str(e)}")
+    
+    return df_estadisticas
+
+
+def metricas_detalladas_por_estacion(y_true_lista, y_pred_lista, estaciones_ids, 
+                                   mostrar_tabla=True, top_n=5, exportar_csv=None):
+    """
+    Calcula métricas detalladas para cada estación individual (OPTIMIZADO).
+    
+    Args:
+        y_true_lista: Lista de valores verdaderos
+        y_pred_lista: Lista de predicciones correspondientes
+        estaciones_ids: Lista de IDs de estaciones correspondientes
+        mostrar_tabla: Si mostrar la tabla de métricas
+        top_n: Número de mejores/peores estaciones a destacar
+        exportar_csv: Ruta para exportar resultados a CSV (opcional)
+    
+    Returns:
+        pd.DataFrame: Tabla con métricas detalladas por estación
+    """
+    
+    # Convertir a arrays numpy optimizado
+    y_true_array = np.asarray(y_true_lista, dtype=np.float64)
+    y_pred_array = np.asarray(y_pred_lista, dtype=np.float64)
+    estaciones_array = np.asarray(estaciones_ids, dtype=np.int32)
+    
+    # Verificar longitudes
+    n_samples = len(y_true_array)
+    if not (len(y_pred_array) == len(estaciones_array) == n_samples):
+        raise ValueError("Todas las listas deben tener la misma longitud")
+    
+    # Obtener estaciones únicas
+    estaciones_unicas = np.unique(estaciones_array)
+    n_estaciones = len(estaciones_unicas)
+    
+    if mostrar_tabla:
+        print(f"\n📊 Calculando métricas detalladas para {n_estaciones} estaciones (OPTIMIZADO)...")
+    
+    # Función para redondeo a cifras significativas
+    def round_significant(x, sig_figs=4):
+        if not np.isfinite(x) or x == 0:
+            return x
+        return round(x, sig_figs - int(np.floor(np.log10(abs(x)))) - 1)
+    
+    # Lista para almacenar resultados (preallocated para eficiencia)
+    resultados_detallados = []
+    
+    # Calcular métricas para cada estación (vectorizado cuando sea posible)
+    for estacion in estaciones_unicas:
+        # Usar máscara booleana
+        mask = estaciones_array == estacion
+        y_true_est = y_true_array[mask]
+        y_pred_est = y_pred_array[mask]
+        
+        # Cálculos vectorizados
+        residuos = y_true_est - y_pred_est
+        abs_residuos = np.abs(residuos)
+        
+        n_est = len(y_true_est)
+        
+        # Métricas básicas optimizadas
+        mae = np.mean(abs_residuos)
+        mse = np.mean(residuos**2)
+        rmse = np.sqrt(mse)
+        
+        # R² optimizado
+        ss_res = np.sum(residuos**2)
+        ss_tot = np.sum((y_true_est - np.mean(y_true_est))**2)
+        r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        
+        # MAPE robusto
+        mask_nonzero = y_true_est != 0
+        mape = np.mean(np.abs(residuos[mask_nonzero] / y_true_est[mask_nonzero])) * 100 if np.any(mask_nonzero) else np.inf
+        
+        # Métricas adicionales avanzadas
+        max_error = np.max(abs_residuos)
+        min_error = np.min(abs_residuos)
+        median_error = np.median(abs_residuos)
+        
+        # Correlación optimizada
+        correlation = np.corrcoef(y_true_est, y_pred_est)[0, 1] if n_est > 1 else np.nan
+        
+        # Bias y estadísticas
+        bias = np.mean(residuos)
+        std_residuos = np.std(residuos)
+        
+        # Explained variance
+        var_residuos = np.var(residuos)
+        var_true = np.var(y_true_est)
+        explained_var = 1 - (var_residuos / var_true) if var_true > 0 else 0
+        
+        # Métricas avanzadas adicionales
+        mean_true = np.mean(y_true_est)
+        mean_pred = np.mean(y_pred_est)
+        
+        # SMAPE (Symmetric MAPE)
+        smape = np.mean(2 * abs_residuos / (np.abs(y_true_est) + np.abs(y_pred_est) + 1e-8)) * 100
+        
+        # MASE aproximado
+        naive_error = np.mean(np.abs(np.diff(y_true_est))) if n_est > 1 else 1
+        mase = mae / naive_error if naive_error > 0 else np.inf
+        
+        # Normalized RMSE
+        range_true = np.ptp(y_true_est)  # peak-to-peak
+        nrmse = rmse / range_true * 100 if range_true > 0 else np.inf
+        
+        # CV of RMSE
+        cv_rmse = rmse / mean_true * 100 if mean_true != 0 else np.inf
+        
+        # Quantile errors
+        q25_error = np.percentile(abs_residuos, 25)
+        q75_error = np.percentile(abs_residuos, 75)
+        iqr_error = q75_error - q25_error
+        
+        # Relative errors
+        relative_error = np.mean(abs_residuos / np.maximum(np.abs(y_true_est), 1e-8)) * 100
+        
+        # Crear resultado con redondeo a 4 cifras significativas (simplificado)
+        resultado = {
+            'Estación_ID': int(estacion),
+            'N_Muestras': n_est,
+            'MAE': round_significant(mae),
+            'RMSE': round_significant(rmse),
+            'R²': round_significant(r2),
+            'MAPE (%)': round_significant(mape),
+            'Correlación': round_significant(correlation)
+        }
+        
+        resultados_detallados.append(resultado)
+    
+    # Crear DataFrame optimizado
+    df_detallado = pd.DataFrame(resultados_detallados)
+    
+    # Ordenar por R² descendente (más eficiente)
+    df_detallado = df_detallado.sort_values('R²', ascending=False).reset_index(drop=True)
+    
+    # Agregar rankings múltiples
+    df_detallado.insert(1, 'Rank_R²', range(1, len(df_detallado) + 1))
+    df_detallado.insert(2, 'Rank_RMSE', df_detallado['RMSE'].rank(method='min').astype(int))
+    df_detallado.insert(3, 'Rank_MAE', df_detallado['MAE'].rank(method='min').astype(int))
+    
+    # Mostrar tabla si se solicita
+    if mostrar_tabla:
+        print("\n" + "="*120)
+        print("📊 MÉTRICAS DETALLADAS POR ESTACIÓN (ordenadas por R²)")
+        print("="*120)
+        
+        # Mostrar tabla con formato optimizado
+        with pd.option_context('display.max_columns', None, 'display.width', None):
+            print(df_detallado.to_string(index=False, float_format='%.4g'))
+        
+        print("="*120)
+        
+        # Mostrar rankings múltiples
+        if len(df_detallado) >= top_n:
+            rankings_mostrar = [
+                ('R²', 'R²', False),  # (columna, nombre, ascendente)
+                ('RMSE', 'RMSE', True),
+                ('MAE', 'MAE', True),
+                ('MAPE (%)', 'MAPE', True),
+                ('Correlación', 'Correlación', False)
+            ]
+            
+            for col, nombre, ascendente in rankings_mostrar:
+                if col in df_detallado.columns:
+                    df_sorted = df_detallado.sort_values(col, ascending=ascendente).head(top_n)
+                    
+                    emoji = "🏆" if not ascendente else "✅"
+                    direccion = "Mayor" if not ascendente else "Menor"
+                    
+                    print(f"\n{emoji} TOP {top_n} ESTACIONES ({direccion} {nombre}):")
+                    for idx, (_, row) in enumerate(df_sorted.iterrows(), 1):
+                        print(f"   {idx}. Estación {row['Estación_ID']}: {nombre} = {row[col]:.4g}")
+        
+        # Resumen estadístico adicional
+        print(f"\n� RESUMEN ESTADÍSTICO:")
+        metricas_resumen = ['R²', 'RMSE', 'MAE', 'MAPE (%)', 'Correlación']
+        for metrica in metricas_resumen:
+            if metrica in df_detallado.columns:
+                serie = df_detallado[metrica].replace([np.inf, -np.inf], np.nan).dropna()
+                if not serie.empty:
+                    print(f"   • {metrica}: Media={serie.mean():.4g}, Mediana={serie.median():.4g}, Std={serie.std():.4g}")
+    
+    # Exportar con formato optimizado
+    if exportar_csv:
+        try:
+            df_detallado.to_csv(exportar_csv, index=False, float_format='%.4g')
+            if mostrar_tabla:
+                print(f"\n💾 Métricas detalladas exportadas a: {exportar_csv}")
+        except Exception as e:
+            if mostrar_tabla:
+                print(f"\n❌ Error al exportar CSV: {str(e)}")
+    
+    return df_detallado

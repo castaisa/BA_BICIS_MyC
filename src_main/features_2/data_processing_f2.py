@@ -45,11 +45,11 @@ def filtrar_dataset_por_estaciones(df, estaciones_incluir, verbose=True):
         print(f"Bicis salieron - Incluir: {len(bicis_salieron_incluir)} columnas")
         print(f"Bicis salieron - Excluir: {len(bicis_salieron_excluir)} columnas")
     
-    # Crear columna total de bicis salieron (suma de las excluidas)
-    if bicis_salieron_excluir:
-        df_filtered['bicis_salieron_total'] = df[bicis_salieron_excluir].sum(axis=1)
-        if verbose:
-            print(f"✓ Agregada columna 'bicis_salieron_total' (suma de {len(bicis_salieron_excluir)} estaciones)")
+    # # Crear columna total de bicis salieron (suma de las excluidas)
+    # if bicis_salieron_excluir:
+    #     df_filtered['bicis_salieron_total'] = df[bicis_salieron_excluir].sum(axis=1)
+    #     if verbose:
+    #         print(f"✓ Agregada columna 'bicis_salieron_total' (suma de {len(bicis_salieron_excluir)} estaciones)")
     
     # Eliminar columnas de bicis salieron excluidas
     df_filtered = df_filtered.drop(columns=bicis_salieron_excluir)
@@ -142,7 +142,6 @@ def filtrar_dataset_por_estaciones(df, estaciones_incluir, verbose=True):
         print(f"\nShape final: {df_filtered.shape}")
         print(f"Columnas eliminadas: {len(df.columns) - len(df_filtered.columns)}")
         print(f"Columnas agregadas: {len([col for col in df_filtered.columns if col not in df.columns])}")
-    else:
         # Print básico cuando verbose=False
         print(f"Dataset filtrado: {df.shape} → {df_filtered.shape} (estaciones: {estaciones_incluir})")
     
@@ -224,8 +223,6 @@ def dividir_dataset_estacion(df, estacion_id, verbose=True):
         print(f"  - Valores nulos: {y.isnull().sum()}")
         print(f"  - Valores cero: {(y == 0).sum()}")
         print(f"  - Percentiles: 25%={y.quantile(0.25):.2f}, 50%={y.quantile(0.5):.2f}, 75%={y.quantile(0.75):.2f}")
-    else:
-        # Print básico cuando verbose=False
         print(f"Dataset dividido estación {estacion_id}: X{X.shape}, y{y.shape}")
     
     return X, y, feature_columns
@@ -317,75 +314,48 @@ def dividir_dataset_multiples_estaciones(df, estaciones_ids, verbose=True):
             print(f"    - Media: {target_data.mean():.2f}")
             print(f"    - Valores nulos: {target_data.isnull().sum()}")
             print(f"    - Valores cero: {(target_data == 0).sum()}")
-    else:
-        # Print básico cuando verbose=False
+
         estaciones_encontradas = [int(col.split('_')[-1]) for col in target_columns]
         print(f"Dataset dividido múltiples estaciones {estaciones_encontradas}: X{X.shape}, y{y.shape}")
     
     return X, y, feature_columns, target_columns
 
 
-def obtener_targets_disponibles(df, verbose=True):
+def obtener_targets_disponibles(df, verbose=False):
     """
-    Obtiene información sobre todos los targets disponibles en el dataset.
+    Obtiene una lista con los IDs de las estaciones que tienen targets disponibles.
     
     Args:
         df (pd.DataFrame): DataFrame a analizar
         verbose (bool): Si True, muestra información detallada del análisis
     
     Returns:
-        dict: Información sobre los targets disponibles
+        list: Lista de IDs de estaciones (números enteros)
     """
     
-    # Encontrar todas las columnas target
-    target_columns = [col for col in df.columns if col.startswith('target_')]
+    # Encontrar todas las columnas target de estaciones
+    target_columns = [col for col in df.columns if col.startswith('target_estacion_')]
     
     # Extraer IDs de estaciones
     estaciones_ids = []
-    otros_targets = []
     
     for col in target_columns:
-        if col.startswith('target_estacion_'):
-            try:
-                estacion_id = int(col.split('_')[-1])
-                estaciones_ids.append(estacion_id)
-            except:
-                otros_targets.append(col)
-        else:
-            otros_targets.append(col)
+        try:
+            # Extraer el número después de 'target_estacion_'
+            estacion_id = int(col.split('_')[-1])
+            estaciones_ids.append(estacion_id)
+        except:
+            # Si no se puede extraer el número, ignorar
+            continue
     
-    estaciones_ids = sorted(estaciones_ids)
-    
-    info = {
-        'total_targets': len(target_columns),
-        'estaciones_ids': estaciones_ids,
-        'targets_estaciones': [f'target_estacion_{id}' for id in estaciones_ids],
-        'otros_targets': otros_targets,
-        'todos_targets': target_columns
-    }
+    # Ordenar y eliminar duplicados
+    estaciones_ids = sorted(list(set(estaciones_ids)))
     
     if verbose:
-        print(f"=== TARGETS DISPONIBLES ===")
-        print(f"Total de targets: {len(target_columns)}")
-        print(f"Targets de estaciones: {len(estaciones_ids)}")
-        print(f"  Estaciones: {estaciones_ids}")
-        print(f"Otros targets: {len(otros_targets)}")
-        if otros_targets:
-            print(f"  Nombres: {otros_targets}")
-        
-        # Mostrar estadísticas básicas
-        if estaciones_ids:
-            print(f"\n📊 ESTADÍSTICAS RÁPIDAS:")
-            sample_targets = [f'target_estacion_{id}' for id in estaciones_ids[:3]]
-            for col in sample_targets:
-                if col in df.columns:
-                    data = df[col]
-                    print(f"  {col}: media={data.mean():.2f}, std={data.std():.2f}")
-    else:
-        # Print básico cuando verbose=False
-        print(f"Targets disponibles: {len(estaciones_ids)} estaciones, {len(otros_targets)} otros")
+        print(f"Estaciones con targets disponibles: {estaciones_ids}")
+        print(f"Total de estaciones: {len(estaciones_ids)}")
     
-    return info
+    return estaciones_ids
 
 
 def crear_dataset_completo_estacion(df, estacion_id, verbose=True):
@@ -422,7 +392,7 @@ def crear_dataset_completo_estacion(df, estacion_id, verbose=True):
         print(f"  - Target (y): {y.shape}")
         print(f"  - Features específicas de estación {estacion_id}: incluidas")
         print(f"  - Features totales compensatorias: incluidas")
-    else:
+
         # Print básico cuando verbose=False
         print(f"Dataset completo estación {estacion_id}: X{X.shape}, y{y.shape}")
     
@@ -446,3 +416,4 @@ def crear_dataset_estacion_especifica(df, estacion_id, verbose=True):
         print(f"Creando dataset específico para estación {estacion_id}")
     
     return filtrar_dataset_por_estaciones(df, [estacion_id], verbose=verbose)
+
