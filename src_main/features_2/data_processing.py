@@ -99,7 +99,33 @@ def filtrar_dataset_por_estaciones(df, estaciones_incluir, verbose=True):
     # Eliminar columnas de llegadas excluidas
     df_filtered = df_filtered.drop(columns=llegadas_excluir)
     
-    # 3. Mostrar resumen de features incluidas para las estaciones seleccionadas
+    # 3. Procesar columnas temporales
+    # Eliminar fecha_hora si existe
+    if 'fecha_hora' in df_filtered.columns:
+        df_filtered = df_filtered.drop('fecha_hora', axis=1)
+        if verbose:
+            print("✓ Columna 'fecha_hora' eliminada")
+    
+    # Convertir columnas de hora de hh:mm:ss a números 0-23
+    for col in df_filtered.columns:
+        if 'hora' in col.lower() and not col.startswith('target_'):
+            try:
+                # Intentar convertir de formato tiempo a hora numérica
+                df_filtered[col] = pd.to_datetime(df_filtered[col], format='%H:%M:%S').dt.hour
+                if verbose:
+                    print(f"✓ Columna '{col}' convertida de hh:mm:ss a hora (0-23)")
+            except:
+                try:
+                    # Segundo intento con formato más flexible
+                    df_filtered[col] = pd.to_datetime(df_filtered[col]).dt.hour
+                    if verbose:
+                        print(f"✓ Columna '{col}' convertida a hora (0-23)")
+                except:
+                    # Si no se puede convertir, mantener como está
+                    if verbose:
+                        print(f"⚠️ No se pudo convertir columna de tiempo '{col}'")
+    
+    # 4. Mostrar resumen de features incluidas para las estaciones seleccionadas
     if verbose:
         print(f"\n📊 FEATURES INCLUIDAS POR ESTACIÓN:")
         for estacion in estaciones_incluir:
@@ -152,6 +178,36 @@ def dividir_dataset_estacion(df, estacion_id, verbose=True):
     # Crear X e y
     X = df[feature_columns].copy()
     y = df[target_column].copy()
+    
+    # Procesar columnas temporales en X
+    # 1. Eliminar fecha_hora si existe
+    if 'fecha_hora' in X.columns:
+        X = X.drop('fecha_hora', axis=1)
+        feature_columns = [col for col in feature_columns if col != 'fecha_hora']
+        if verbose:
+            print("✓ Columna 'fecha_hora' eliminada")
+    
+    # 2. Convertir columnas de hora de hh:mm:ss a números 0-23
+    for col in X.columns:
+        if 'hora' in col.lower():
+            try:
+                # Intentar convertir de formato tiempo a hora numérica
+                X[col] = pd.to_datetime(X[col], format='%H:%M:%S').dt.hour
+                if verbose:
+                    print(f"✓ Columna '{col}' convertida de hh:mm:ss a hora (0-23)")
+            except:
+                try:
+                    # Segundo intento con formato más flexible
+                    X[col] = pd.to_datetime(X[col]).dt.hour
+                    if verbose:
+                        print(f"✓ Columna '{col}' convertida a hora (0-23)")
+                except:
+                    # Si no se puede convertir, mantener como está
+                    if verbose:
+                        print(f"⚠️ No se pudo convertir columna de tiempo '{col}'")
+    
+    # Actualizar feature_columns después del procesamiento
+    feature_columns = list(X.columns)
     
     if verbose:
         print(f"=== DIVISIÓN DATASET ESTACIÓN {estacion_id} ===")
@@ -212,6 +268,36 @@ def dividir_dataset_multiples_estaciones(df, estaciones_ids, verbose=True):
     # Crear X e y
     X = df[feature_columns].copy()
     y = df[target_columns].copy()
+    
+    # Procesar columnas temporales en X
+    # 1. Eliminar fecha_hora si existe
+    if 'fecha_hora' in X.columns:
+        X = X.drop('fecha_hora', axis=1)
+        feature_columns = [col for col in feature_columns if col != 'fecha_hora']
+        if verbose:
+            print("✓ Columna 'fecha_hora' eliminada")
+    
+    # 2. Convertir columnas de hora de hh:mm:ss a números 0-23
+    for col in X.columns:
+        if 'hora' in col.lower():
+            try:
+                # Intentar convertir de formato tiempo a hora numérica
+                X[col] = pd.to_datetime(X[col], format='%H:%M:%S').dt.hour
+                if verbose:
+                    print(f"✓ Columna '{col}' convertida de hh:mm:ss a hora (0-23)")
+            except:
+                try:
+                    # Segundo intento con formato más flexible
+                    X[col] = pd.to_datetime(X[col]).dt.hour
+                    if verbose:
+                        print(f"✓ Columna '{col}' convertida a hora (0-23)")
+                except:
+                    # Si no se puede convertir, mantener como está
+                    if verbose:
+                        print(f"⚠️ No se pudo convertir columna de tiempo '{col}'")
+    
+    # Actualizar feature_columns después del procesamiento
+    feature_columns = list(X.columns)
     
     if verbose:
         print(f"=== DIVISIÓN DATASET MÚLTIPLES ESTACIONES ===")
@@ -342,76 +428,6 @@ def crear_dataset_completo_estacion(df, estacion_id, verbose=True):
     
     return X, y, feature_names, df_filtrado
 
-
-def obtener_info_estaciones_dataset(df, verbose=True):
-    """
-    Analiza el dataset para mostrar información sobre las estaciones disponibles.
-    
-    Args:
-        df (pd.DataFrame): DataFrame a analizar
-        verbose (bool): Si True, muestra información detallada del análisis
-    
-    Returns:
-        dict: Información sobre las estaciones en el dataset
-    """
-    
-    info = {
-        'estaciones_bicis_salieron': [],
-        'estaciones_llegadas_lag': [],
-        'horas_disponibles': set(),
-        'total_features_bicis': 0,
-        'total_features_llegadas': 0
-    }
-    
-    # Analizar columnas de bicis salieron
-    bicis_cols = [col for col in df.columns if col.startswith('bicis_salieron_estacion_')]
-    for col in bicis_cols:
-        try:
-            estacion_num = int(col.split('_')[-1])
-            info['estaciones_bicis_salieron'].append(estacion_num)
-        except:
-            continue
-    
-    # Analizar columnas de llegadas lag
-    llegadas_cols = [col for col in df.columns if col.startswith('llegadas_estacion_') and '_h' in col]
-    for col in llegadas_cols:
-        try:
-            partes = col.split('_')
-            if len(partes) >= 4:
-                estacion_num = int(partes[2])
-                hora = col.split('_h')[-1]
-                info['estaciones_llegadas_lag'].append(estacion_num)
-                info['horas_disponibles'].add(hora)
-        except:
-            continue
-    
-    # Remover duplicados y ordenar
-    info['estaciones_bicis_salieron'] = sorted(set(info['estaciones_bicis_salieron']))
-    info['estaciones_llegadas_lag'] = sorted(set(info['estaciones_llegadas_lag']))
-    info['horas_disponibles'] = sorted(info['horas_disponibles'])
-    info['total_features_bicis'] = len(bicis_cols)
-    info['total_features_llegadas'] = len(llegadas_cols)
-    
-    if verbose:
-        print(f"=== ANÁLISIS DE ESTACIONES EN DATASET ===")
-        print(f"Estaciones con features 'bicis_salieron': {len(info['estaciones_bicis_salieron'])}")
-        if info['estaciones_bicis_salieron']:
-            print(f"  Rango: {min(info['estaciones_bicis_salieron'])}-{max(info['estaciones_bicis_salieron'])}")
-            print(f"  Algunas: {info['estaciones_bicis_salieron'][:10]}{'...' if len(info['estaciones_bicis_salieron']) > 10 else ''}")
-        
-        print(f"Estaciones con features 'llegadas_lag': {len(info['estaciones_llegadas_lag'])}")
-        if info['estaciones_llegadas_lag']:
-            print(f"  Rango: {min(info['estaciones_llegadas_lag'])}-{max(info['estaciones_llegadas_lag'])}")
-            print(f"  Algunas: {info['estaciones_llegadas_lag'][:10]}{'...' if len(info['estaciones_llegadas_lag']) > 10 else ''}")
-        
-        print(f"Horas disponibles para llegadas lag: {info['horas_disponibles']}")
-        print(f"Total features bicis salieron: {info['total_features_bicis']}")
-        print(f"Total features llegadas lag: {info['total_features_llegadas']}")
-    else:
-        # Print básico cuando verbose=False
-        print(f"Estaciones disponibles: {len(info['estaciones_bicis_salieron'])} bicis, {len(info['estaciones_llegadas_lag'])} llegadas")
-    
-    return info
 
 
 def crear_dataset_estacion_especifica(df, estacion_id, verbose=True):
