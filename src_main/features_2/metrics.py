@@ -168,7 +168,7 @@ def crear_tabla_metricas(metricas_dict, nombre_modelo="Modelo", mostrar_estadist
 
 def evaluar_modelo_regresion(y_true, y_pred, nombre_modelo="Modelo", 
                            mostrar_tabla=True, mostrar_estadisticas=True,
-                           mostrar_plot=False, figsize=(10, 6)):
+                           mostrar_plot=True, analisis_completo=False, figsize=(10, 6)):
     """
     Evalúa un modelo de regresión y muestra métricas en tabla.
     
@@ -179,6 +179,7 @@ def evaluar_modelo_regresion(y_true, y_pred, nombre_modelo="Modelo",
         mostrar_tabla: Si mostrar la tabla de métricas
         mostrar_estadisticas: Si incluir estadísticas descriptivas
         mostrar_plot: Si mostrar gráfico de predicciones vs reales
+        analisis_completo: Si mostrar análisis completo con residuos
         figsize: Tamaño de la figura
     
     Returns:
@@ -199,148 +200,34 @@ def evaluar_modelo_regresion(y_true, y_pred, nombre_modelo="Modelo",
         print(df_tabla.to_string(index=False))
         print(f"{'='*60}")
     
-    # Mostrar plot si se solicita
-    if mostrar_plot:
+    # Mostrar análisis completo o plot básico
+    if analisis_completo:
+        grafico_analisis_completo(y_true, y_pred, nombre_modelo, figsize=(15, 10))
+    elif mostrar_plot:
         _plot_predicciones_vs_reales(y_true, y_pred, nombre_modelo, figsize)
     
     return metricas, df_tabla
 
 
-def comparar_modelos_regresion(modelos_predicciones: Dict[str, np.ndarray], 
-                             y_true: np.ndarray,
-                             mostrar_tabla=True,
-                             mostrar_plots=False,
-                             ordenar_por='R²',
-                             ascendente=False,
-                             guardar_csv=None):
-    """
-    Compara múltiples modelos de regresión y muestra métricas en tabla comparativa.
-    
-    Args:
-        modelos_predicciones: Dict con {nombre_modelo: predicciones}
-        y_true: Valores reales
-        mostrar_tabla: Si mostrar tabla comparativa
-        mostrar_plots: Si mostrar gráficos comparativos
-        ordenar_por: Métrica por la cual ordenar ('R²', 'RMSE', 'MAE', etc.)
-        ascendente: Si ordenar de forma ascendente
-        guardar_csv: Ruta para guardar la tabla en CSV
-    
-    Returns:
-        tuple: (dict_metricas_todos, df_comparacion)
-    """
-    
-    print(f"\n{'='*80}")
-    print("COMPARACIÓN DE MODELOS DE REGRESIÓN")
-    print(f"{'='*80}")
-    
-    # Calcular métricas para todos los modelos
-    metricas_todos = {}
-    for nombre, predicciones in modelos_predicciones.items():
-        metricas_todos[nombre] = calcular_metricas_regresion(y_true, predicciones)
-    
-    # Crear tabla comparativa
-    df_comparacion = crear_tabla_comparacion(metricas_todos, ordenar_por, ascendente)
-    
-    # Mostrar tabla si se solicita
-    if mostrar_tabla:
-        print(df_comparacion.to_string(index=False))
-        print(f"\n{'='*80}")
-        
-        # Mostrar resumen de mejores modelos
-        mostrar_mejores_modelos(df_comparacion)
-    
-    # Guardar CSV si se solicita
-    if guardar_csv:
-        df_comparacion.to_csv(guardar_csv, index=False)
-        print(f"\n💾 Tabla guardada en: {guardar_csv}")
-    
-    # Mostrar gráficos si se solicita
-    if mostrar_plots:
-        crear_plots_comparacion(modelos_predicciones, y_true)
-    
-    return metricas_todos, df_comparacion
-
-
-def crear_tabla_comparacion(metricas_todos, ordenar_por='R²', ascendente=False):
-    """
-    Crea tabla comparativa de múltiples modelos.
-    """
-    
-    # Métricas principales para comparación
-    metricas_comparacion = ['MAE', 'RMSE', 'R²', 'MAPE', 'Correlation', 'Bias']
-    
-    # Crear DataFrame
-    data = []
-    for nombre_modelo, metricas in metricas_todos.items():
-        fila = {'Modelo': nombre_modelo}
-        for metrica in metricas_comparacion:
-            if metrica in metricas:
-                value = metricas[metrica]
-                if metrica in ['R²', 'Correlation']:
-                    fila[metrica] = f"{value:.4f}"
-                elif metrica == 'MAPE':
-                    fila[metrica] = f"{value:.2f}%"
-                else:
-                    fila[metrica] = f"{value:.4f}"
-            else:
-                fila[metrica] = "N/A"
-        
-        # Agregar número de muestras
-        fila['N_Samples'] = f"{int(metricas.get('N_Samples', 0)):,}"
-        data.append(fila)
-    
-    df = pd.DataFrame(data)
-    
-    # Ordenar por métrica especificada si existe
-    if ordenar_por in df.columns and ordenar_por != 'Modelo':
-        # Convertir a numérico para ordenar (remover % y convertir)
-        col_ordenar = df[ordenar_por].str.replace('%', '').astype(float)
-        df_sorted = df.iloc[col_ordenar.argsort()]
-        if not ascendente:
-            df_sorted = df_sorted.iloc[::-1]
-        return df_sorted.reset_index(drop=True)
-    
-    return df
-
-
-def mostrar_mejores_modelos(df_comparacion):
-    """
-    Muestra un resumen de los mejores modelos por métrica.
-    """
-    
-    print("🏆 MEJORES MODELOS POR MÉTRICA:")
-    print("-" * 50)
-    
-    # Métricas donde menor es mejor
-    metricas_menor_mejor = ['MAE', 'RMSE', 'MAPE', 'Bias']
-    # Métricas donde mayor es mejor  
-    metricas_mayor_mejor = ['R²', 'Correlation']
-    
-    for metrica in metricas_menor_mejor + metricas_mayor_mejor:
-        if metrica in df_comparacion.columns:
-            # Convertir a numérico
-            valores = df_comparacion[metrica].str.replace('%', '').astype(float)
-            
-            if metrica in metricas_menor_mejor:
-                idx_mejor = valores.idxmin()
-            else:
-                idx_mejor = valores.idxmax()
-            
-            mejor_modelo = df_comparacion.loc[idx_mejor, 'Modelo']
-            mejor_valor = df_comparacion.loc[idx_mejor, metrica]
-            
-            print(f"{metrica:>12}: {mejor_modelo:<20} ({mejor_valor})")
-
-
 def _plot_predicciones_vs_reales(y_true, y_pred, nombre_modelo, figsize):
     """
-    Crea gráfico de predicciones vs valores reales.
+    Crea gráfico de predicciones vs valores reales con métricas integradas.
     """
     
     plt.figure(figsize=figsize)
     
-    # Scatter plot
-    plt.scatter(y_true, y_pred, alpha=0.6, s=30, edgecolors='black', linewidth=0.5)
+    # Convertir a arrays numpy
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    # Scatter plot con colores según el error
+    errors = np.abs(y_true - y_pred)
+    scatter = plt.scatter(y_true, y_pred, c=errors, cmap='viridis', alpha=0.6, s=30, 
+                         edgecolors='black', linewidth=0.5, label='Datos')
+    
+    # Colorbar para los errores
+    cbar = plt.colorbar(scatter)
+    cbar.set_label('Error Absoluto', rotation=270, labelpad=15)
     
     # Línea diagonal perfecta
     min_val = min(y_true.min(), y_pred.min())
@@ -354,79 +241,116 @@ def _plot_predicciones_vs_reales(y_true, y_pred, nombre_modelo, figsize):
     plt.plot(y_true, p(y_true), 'g-', linewidth=2, alpha=0.8, 
              label=f'Tendencia (pendiente={z[0]:.3f})')
     
-    # Calcular R²
+    # Calcular métricas principales
     r2 = r2_score(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    
+    # Agregar texto con métricas en el gráfico
+    textstr = f'R² = {r2:.4f}\nRMSE = {rmse:.4f}\nMAE = {mae:.4f}\nN = {len(y_true):,}'
+    props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+    plt.text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10,
+             verticalalignment='top', bbox=props)
     
     # Formato
     plt.xlabel('Valores Reales', fontsize=12)
     plt.ylabel('Predicciones', fontsize=12)
-    plt.title(f'{nombre_modelo} - Predicciones vs Valores Reales (R² = {r2:.4f})', fontsize=14)
-    plt.legend()
+    plt.title(f'{nombre_modelo} - Predicciones vs Valores Reales', fontsize=14, fontweight='bold')
+    plt.legend(loc='lower right')
     plt.grid(True, alpha=0.3)
+    
+    # Igualar aspectos para que la línea diagonal se vea como 45°
+    plt.axis('equal')
     plt.tight_layout()
     plt.show()
 
 
-def crear_plots_comparacion(modelos_predicciones, y_true, figsize=(15, 10)):
+def grafico_analisis_completo(y_true, y_pred, nombre_modelo="Modelo", figsize=(15, 10)):
     """
-    Crea gráficos comparativos para múltiples modelos.
+    Crea un análisis gráfico completo del modelo con múltiples visualizaciones.
+    
+    Args:
+        y_true: Valores reales
+        y_pred: Valores predichos  
+        nombre_modelo: Nombre del modelo
+        figsize: Tamaño de la figura
     """
     
-    n_modelos = len(modelos_predicciones)
-    cols = min(3, n_modelos)
-    rows = (n_modelos + cols - 1) // cols
+    # Convertir a arrays numpy
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    residuos = y_true - y_pred
     
-    fig, axes = plt.subplots(rows, cols, figsize=figsize)
-    if n_modelos == 1:
-        axes = [axes]
-    elif rows == 1:
-        axes = axes.flatten()
-    else:
-        axes = axes.flatten()
+    # Crear subplots
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    fig.suptitle(f'Análisis Completo del Modelo: {nombre_modelo}', fontsize=16, fontweight='bold')
     
-    for idx, (nombre, y_pred) in enumerate(modelos_predicciones.items()):
-        ax = axes[idx]
-        
-        # Scatter plot
-        ax.scatter(y_true, y_pred, alpha=0.6, s=20)
-        
-        # Línea diagonal
-        min_val = min(y_true.min(), y_pred.min())
-        max_val = max(y_true.max(), y_pred.max())
-        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, alpha=0.8)
-        
-        # R² y RMSE
-        r2 = r2_score(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        
-        ax.set_title(f'{nombre}\nR² = {r2:.4f}, RMSE = {rmse:.4f}')
-        ax.set_xlabel('Valores Reales')
-        ax.set_ylabel('Predicciones')
-        ax.grid(True, alpha=0.3)
+    # 1. Predicciones vs Valores Reales
+    ax1 = axes[0, 0]
+    errors = np.abs(residuos)
+    scatter = ax1.scatter(y_true, y_pred, c=errors, cmap='viridis', alpha=0.6, s=30)
     
-    # Ocultar subplots vacíos
-    for idx in range(n_modelos, len(axes)):
-        axes[idx].set_visible(False)
+    # Línea diagonal perfecta
+    min_val = min(y_true.min(), y_pred.min())
+    max_val = max(y_true.max(), y_pred.max())
+    ax1.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, alpha=0.8)
+    
+    # Línea de tendencia
+    z = np.polyfit(y_true, y_pred, 1)
+    p = np.poly1d(z)
+    ax1.plot(y_true, p(y_true), 'g-', linewidth=2, alpha=0.8)
+    
+    # Métricas
+    r2 = r2_score(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    textstr = f'R² = {r2:.4f}\nRMSE = {rmse:.4f}'
+    ax1.text(0.05, 0.95, textstr, transform=ax1.transAxes, fontsize=10,
+             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+    
+    ax1.set_xlabel('Valores Reales')
+    ax1.set_ylabel('Predicciones')
+    ax1.set_title('Predicciones vs Valores Reales')
+    ax1.grid(True, alpha=0.3)
+    
+    # 2. Residuos vs Predicciones
+    ax2 = axes[0, 1]
+    ax2.scatter(y_pred, residuos, alpha=0.6, s=30)
+    ax2.axhline(y=0, color='r', linestyle='--', linewidth=2)
+    ax2.set_xlabel('Predicciones')
+    ax2.set_ylabel('Residuos (Real - Predicho)')
+    ax2.set_title('Residuos vs Predicciones')
+    ax2.grid(True, alpha=0.3)
+    
+    # 3. Histograma de Residuos
+    ax3 = axes[1, 0]
+    ax3.hist(residuos, bins=30, alpha=0.7, color='skyblue', edgecolor='black')
+    ax3.axvline(x=0, color='r', linestyle='--', linewidth=2)
+    ax3.axvline(x=np.mean(residuos), color='g', linestyle='--', linewidth=2, 
+                label=f'Media = {np.mean(residuos):.4f}')
+    ax3.set_xlabel('Residuos')
+    ax3.set_ylabel('Frecuencia')
+    ax3.set_title('Distribución de Residuos')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    # 4. Q-Q Plot (aproximado)
+    ax4 = axes[1, 1]
+    from scipy import stats
+    try:
+        stats.probplot(residuos, dist="norm", plot=ax4)
+        ax4.set_title('Q-Q Plot (Normalidad de Residuos)')
+        ax4.grid(True, alpha=0.3)
+    except ImportError:
+        # Si scipy no está disponible, hacer un gráfico alternativo
+        sorted_residuos = np.sort(residuos)
+        n = len(sorted_residuos)
+        theoretical_quantiles = stats.norm.ppf((np.arange(1, n+1) - 0.5) / n)
+        ax4.scatter(theoretical_quantiles, sorted_residuos, alpha=0.6)
+        ax4.plot(theoretical_quantiles, theoretical_quantiles, 'r--', linewidth=2)
+        ax4.set_xlabel('Cuantiles Teóricos')
+        ax4.set_ylabel('Cuantiles de Residuos')
+        ax4.set_title('Q-Q Plot (Normalidad de Residuos)')
+        ax4.grid(True, alpha=0.3)
     
     plt.tight_layout()
     plt.show()
-
-
-# Función de conveniencia para evaluación rápida
-def evaluar_rapido(y_true, y_pred, nombre="Modelo"):
-    """
-    Evaluación rápida con tabla básica.
-    """
-    return evaluar_modelo_regresion(y_true, y_pred, nombre, 
-                                  mostrar_estadisticas=False, 
-                                  mostrar_plot=False)
-
-
-# Función de conveniencia para comparación rápida
-def comparar_rapido(modelos_dict, y_true, ordenar_por='R²'):
-    """
-    Comparación rápida sin gráficos.
-    """
-    return comparar_modelos_regresion(modelos_dict, y_true,
-                                    mostrar_plots=False,
-                                    ordenar_por=ordenar_por)
