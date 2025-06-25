@@ -4,13 +4,16 @@ from datetime import datetime, timedelta
 import holidays
 from typing import List, Tuple, Dict, Optional
 
-def crear_dataset_unificado_bicis(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[int]]:
+def crear_dataset_unificado_bicis(df: pd.DataFrame, features_requeridas: Optional[List[str]] = None) -> Tuple[pd.DataFrame, List[int]]:
     """
     Crea un dataset unificado OPTIMIZADO para predecir llegadas de bicis por hora.
     Cada fila = una hora específica con toda la info global y por estación.
     
     Args:
         df: DataFrame con los datos de recorridos
+        features_requeridas: Lista opcional de features que debe tener el dataset final.
+                           Si no está en df, se crea con valor 0.
+                           Features en df que no estén en esta lista se eliminan.
     
     Returns:
         Tuple[DataFrame, List]: (dataset_unificado, lista_estaciones)
@@ -196,14 +199,55 @@ def crear_dataset_unificado_bicis(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[
     # Ordenar por fecha
     dataset = dataset.sort_values('fecha_hora').reset_index(drop=True)
     
+    # ============= FILTRADO DE FEATURES =============
+    if features_requeridas is not None:
+        print("🔧 Aplicando filtrado de features...")
+        
+        # Features actuales en el dataset
+        features_actuales = set(dataset.columns)
+        features_requeridas_set = set(features_requeridas)
+        
+        # Features que se necesitan agregar (con valor 0)
+        features_agregar = features_requeridas_set - features_actuales
+        
+        # Features que se van a eliminar
+        features_eliminar = features_actuales - features_requeridas_set
+        
+        # Agregar features faltantes con valor 0
+        if features_agregar:
+            print(f"➕ Agregando {len(features_agregar)} features faltantes con valor 0:")
+            for feature in sorted(features_agregar):
+                dataset[feature] = 0
+                print(f"   + {feature}")
+        
+        # Eliminar features no requeridas
+        if features_eliminar:
+            print(f"➖ Eliminando {len(features_eliminar)} features no requeridas:")
+            for feature in sorted(features_eliminar):
+                print(f"   - {feature}")
+            dataset = dataset.drop(columns=list(features_eliminar))
+        
+        # Reordenar columnas según el orden de features_requeridas
+        # (manteniendo las que existen)
+        columnas_ordenadas = [col for col in features_requeridas if col in dataset.columns]
+        dataset = dataset[columnas_ordenadas]
+        
+        print(f"✅ Filtrado completado: {len(dataset.columns)} features finales")
+    
     print(f"✅ Dataset creado: {len(dataset):,} filas × {len(dataset.columns):,} columnas")
     print(f"📈 Memoria aproximada: {dataset.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     
     # Mostrar muestra del dataset
     print("\n📋 Primeras 3 filas del dataset:")
-    cols_muestra = ['fecha_hora', 'hora', 'dia_semana', 'total_bicis_salieron_global', 
-                   'pct_mujeres_salieron_global'] + [f'bicis_salieron_estacion_{todas_estaciones[0]}'] + \
-                   [f'llegadas_estacion_{todas_estaciones[0]}_h1'] + [f'target_estacion_{todas_estaciones[0]}']
+    if features_requeridas is None:
+        cols_muestra = ['fecha_hora', 'hora', 'dia_semana', 'total_bicis_salieron_global', 
+                       'pct_mujeres_salieron_global'] + [f'bicis_salieron_estacion_{todas_estaciones[0]}'] + \
+                       [f'llegadas_estacion_{todas_estaciones[0]}_h1'] + [f'target_estacion_{todas_estaciones[0]}']
+        cols_muestra = [col for col in cols_muestra if col in dataset.columns]
+    else:
+        # Mostrar las primeras 5 columnas del dataset filtrado
+        cols_muestra = dataset.columns[:5].tolist()
+    
     print(dataset[cols_muestra].head(3).to_string())
     
     return dataset, todas_estaciones
@@ -377,4 +421,75 @@ def mostrar_resumen_dataset(dataset: pd.DataFrame, todas_estaciones: List[int]) 
         print(f"   📉 Mínimo global: {target_stats.loc['min'].min():.0f} bicis/hora")
     
     print("="*60)
+
+def obtener_nombres_features(df: pd.DataFrame) -> List[str]:
+    """
+    Función simple que devuelve los nombres de las features como una lista.
+    
+    Args:
+        df: DataFrame del cual extraer los nombres de columnas
+    
+    Returns:
+        List[str]: Lista con los nombres de las columnas
+    """
+    return df.columns.tolist()
+
+
+def obtener_features_disponibles(df: pd.DataFrame, mostrar=True) -> Dict[str, List[str]]:
+    """
+    Función para obtener las features disponibles categorizadas.
+    Útil para saber qué features están disponibles antes de crear el dataset.
+    
+    Args:
+        df: DataFrame original con datos de recorridos
+        mostrar: Si mostrar el resumen por consola
+    
+    Returns:
+        Dict con features categorizadas
+    """
+    
+    # Obtener todas las columnas
+    todas_columnas = df.columns.tolist()
+    
+    # Categorizar features típicas
+    features_temporales = []
+    features_estacion = []
+    features_usuario = []
+    features_bicicleta = []
+    features_otras = []
+    
+    for col in todas_columnas:
+        col_lower = col.lower()
+        if any(word in col_lower for word in ['fecha', 'hora', 'tiempo', 'date', 'time']):
+            features_temporales.append(col)
+        elif any(word in col_lower for word in ['estacion', 'station']):
+            features_estacion.append(col)
+        elif any(word in col_lower for word in ['usuario', 'user', 'género', 'edad', 'genero']):
+            features_usuario.append(col)
+        elif any(word in col_lower for word in ['bicicleta', 'bike', 'modelo']):
+            features_bicicleta.append(col)
+        else:
+            features_otras.append(col)
+    
+    resultado = {
+        'temporales': features_temporales,
+        'estacion': features_estacion,
+        'usuario': features_usuario,
+        'bicicleta': features_bicicleta,
+        'otras': features_otras,
+        'todas': todas_columnas
+    }
+    
+    if mostrar:
+        print("📋 FEATURES DISPONIBLES EN EL DATASET:")
+        print("="*50)
+        print(f"⏰ Temporales ({len(features_temporales)}): {features_temporales}")
+        print(f"🏪 Estación ({len(features_estacion)}): {features_estacion}")
+        print(f"👤 Usuario ({len(features_usuario)}): {features_usuario}")
+        print(f"🚲 Bicicleta ({len(features_bicicleta)}): {features_bicicleta}")
+        print(f"🔧 Otras ({len(features_otras)}): {features_otras}")
+        print(f"📊 Total: {len(todas_columnas)} features")
+        print("="*50)
+    
+    return resultado
 
