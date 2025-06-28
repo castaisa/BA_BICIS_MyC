@@ -845,74 +845,434 @@ def metricas_detalladas_por_estacion(y_true_lista, y_pred_lista, estaciones_ids,
     return df_detallado
 
 
-def calcular_metricas_multiples(y_true_lista, y_pred_lista):
+def crear_tabla_metricas_multioutput(resultados_multioutput, formato='completo', 
+                                     datos_originales=None, mostrar_graficos=False, figsize=(12, 8)):
     """
-    Calcula métricas para múltiples conjuntos de predicciones y devuelve listas separadas.
+    Crea DataFrames organizados con las métricas multioutput y opcionalmente gráficos.
     
     Args:
-        y_true_lista: Lista de arrays con valores verdaderos
-        y_pred_lista: Lista de arrays con predicciones correspondientes
+        resultados_multioutput: Resultado de calcular_metricas_multioutput()
+        formato: 'completo', 'agregadas', 'por_target'
+        datos_originales: Tupla opcional (y_true, y_pred) para generar gráficos
+        mostrar_graficos: Si mostrar gráficos de predicciones vs valores reales
+        figsize: Tamaño de la figura para gráficos
     
     Returns:
-        tuple: (mse_lista, r2_lista, mae_lista, rmse_lista, mape_lista)
+        pd.DataFrame o dict de DataFrames según el formato
     """
     
-    # Verificar que las listas tengan la misma longitud
-    if len(y_true_lista) != len(y_pred_lista):
-        raise ValueError("Las listas de valores verdaderos y predicciones deben tener la misma longitud")
+    if formato == 'por_target':
+        # DataFrame con métricas por target
+        data = []
+        for target_name, metrics in resultados_multioutput['por_target'].items():
+            row = {'Target': target_name}
+            row.update(metrics)
+            data.append(row)
+        
+        return pd.DataFrame(data)
     
-    # Inicializar listas de resultados
-    mse_lista = []
-    r2_lista = []
-    mae_lista = []
-    rmse_lista = []
-    mape_lista = []
+    elif formato == 'agregadas':
+        # DataFrame con métricas agregadas y globales
+        data = []
+        
+        # Agregadas
+        for key, value in resultados_multioutput['agregadas'].items():
+            data.append({'Tipo': 'Agregada', 'Métrica': key, 'Valor': value})
+        
+        # Globales
+        for key, value in resultados_multioutput['globales'].items():
+            data.append({'Tipo': 'Global', 'Métrica': key, 'Valor': value})
+        
+        return pd.DataFrame(data)
     
-    # Función para redondeo a cifras significativas
-    def round_significant(x, sig_figs=4):
-        if not np.isfinite(x) or x == 0:
-            return x
-        return round(x, sig_figs - int(np.floor(np.log10(abs(x)))) - 1)
+    else:  # formato == 'completo'
+        # Generar gráficos si se solicitan y hay datos originales
+        if mostrar_graficos and datos_originales is not None:
+            _graficar_multioutput_predicciones(datos_originales, resultados_multioutput, figsize)
+        
+        return {
+            'por_target': crear_tabla_metricas_multioutput(resultados_multioutput, 'por_target'),
+            'resumen': crear_tabla_metricas_multioutput(resultados_multioutput, 'agregadas')
+        }
+
+def comparar_metricas_modelos_multioutput(modelos_dict, mostrar_tabla=True, ordenar_por='R²_promedio'):
+    """
+    Compara métricas multioutput entre varios modelos y genera una tabla comparativa ordenada.
     
-    # Calcular métricas para cada conjunto
-    for i, (y_true, y_pred) in enumerate(zip(y_true_lista, y_pred_lista)):
-        # Convertir a arrays numpy
-        y_true = np.asarray(y_true, dtype=np.float64)
-        y_pred = np.asarray(y_pred, dtype=np.float64)
-        
-        # Verificar que tengan la misma longitud
-        if len(y_true) != len(y_pred):
-            raise ValueError(f"El conjunto {i} tiene diferentes longitudes: y_true={len(y_true)}, y_pred={len(y_pred)}")
-        
-        # Calcular métricas básicas
-        residuos = y_true - y_pred
-        abs_residuos = np.abs(residuos)
-        
-        # MSE
-        mse = np.mean(residuos**2)
-        mse_lista.append(round_significant(mse))
-        
-        # MAE
-        mae = np.mean(abs_residuos)
-        mae_lista.append(round_significant(mae))
-        
-        # RMSE
-        rmse = np.sqrt(mse)
-        rmse_lista.append(round_significant(rmse))
-        
-        # R²
-        ss_res = np.sum(residuos**2)
-        ss_tot = np.sum((y_true - np.mean(y_true))**2)
-        r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-        r2_lista.append(round_significant(r2))
-        
-        # MAPE
-        mask_nonzero = y_true != 0
-        if np.any(mask_nonzero):
-            mape = np.mean(np.abs(residuos[mask_nonzero] / y_true[mask_nonzero])) * 100
+    Args:
+        modelos_dict: dict con {nombre_modelo: (y_true, y_pred, target_names)}
+        mostrar_tabla: Si mostrar la tabla comparativa
+        ordenar_por: Métrica por la que ordenar (por defecto 'R²_promedio')
+    
+    Returns:
+        pd.DataFrame: Tabla comparativa de métricas multioutput agregadas
+    """
+    resultados = []
+    for nombre, datos in modelos_dict.items():
+        # Permitir (y_true, y_pred) o (y_true, y_pred, target_names)
+        if len(datos) == 3:
+            y_true, y_pred, target_names = datos
         else:
-            mape = np.inf
-        mape_lista.append(round_significant(mape))
+            y_true, y_pred = datos
+            target_names = None
+        res = calcular_metricas_multioutput(y_true, y_pred, target_names, mostrar_resumen=False)
+        met = res['agregadas']
+        fila = {'Modelo': nombre}
+        fila.update(met)
+        resultados.append(fila)
+    df = pd.DataFrame(resultados)
+    if ordenar_por in df.columns:
+        df = df.sort_values(ordenar_por, ascending=False).reset_index(drop=True)
+    # Agregar ranking
+    df.insert(0, 'Rank', range(1, len(df) + 1))
+    if mostrar_tabla:
+        print(f"\n{'='*100}")
+        print("📊 COMPARATIVA DE MÉTRICAS MULTIOUTPUT ENTRE MODELOS")
+        print(f"{'='*100}")
+        print(df.to_string(index=False, float_format='%.4g'))
+        print(f"{'='*100}")
+        # Mostrar mejor y peor modelo según la métrica de orden
+        if not df.empty and ordenar_por in df.columns:
+            mejor = df.iloc[0]
+            peor = df.iloc[-1]
+            print(f"\n🏆 Mejor modelo ({ordenar_por}): {mejor['Modelo']} ({mejor[ordenar_por]:.4g})")
+            print(f"❌ Peor modelo ({ordenar_por}): {peor['Modelo']} ({peor[ordenar_por]:.4g})")
+    return df
+
+def _graficar_multioutput_predicciones(datos_originales, resultados_multioutput=None, figsize=(12, 8)):
+    """
+    Genera gráficos de predicciones vs valores reales para cada target en multioutput.
     
-    return mse_lista, r2_lista, mae_lista, rmse_lista, mape_lista
+    Args:
+        datos_originales: Tupla (y_true, y_pred) con los datos originales O
+                         Dict con {nombre_modelo: (y_true, y_pred, target_names)}
+        resultados_multioutput: Resultados de calcular_metricas_multioutput() (opcional si datos_originales es dict)
+        figsize: Tamaño de la figura
+    """
+    
+    # Verificar si datos_originales es un diccionario (múltiples modelos) o una tupla (un solo modelo)
+    if isinstance(datos_originales, dict):
+        # Caso: múltiples modelos
+        _graficar_multiple_modelos_multioutput(datos_originales, figsize)
+    else:
+        # Caso: un solo modelo (comportamiento original)
+        _graficar_single_modelo_multioutput(datos_originales, resultados_multioutput, figsize)
+
+
+def _graficar_single_modelo_multioutput(datos_originales, resultados_multioutput, figsize):
+    """
+    Genera gráficos para un solo modelo multioutput.
+    """
+    y_true, y_pred = datos_originales
+    
+    # Convertir a arrays numpy
+    y_true = np.asarray(y_true, dtype=np.float64)
+    y_pred = np.asarray(y_pred, dtype=np.float64)
+    
+    # Verificar dimensiones
+    if y_true.ndim == 1:
+        y_true = y_true.reshape(-1, 1)
+    if y_pred.ndim == 1:
+        y_pred = y_pred.reshape(-1, 1)
+    
+    n_samples, n_targets = y_true.shape
+    target_names = resultados_multioutput['target_names']
+    
+    # Calcular número de filas y columnas para subplots
+    cols = min(3, n_targets)  # Máximo 3 columnas
+    rows = (n_targets + cols - 1) // cols  # Redondear hacia arriba
+    
+    # Crear figura con subplots
+    fig, axes = plt.subplots(rows, cols, figsize=figsize)
+    fig.suptitle('Predicciones vs Valores Reales - Multioutput', fontsize=16, fontweight='bold')
+    
+    # Si solo hay un subplot, convertir a array
+    if n_targets == 1:
+        axes = [axes]
+    elif rows == 1:
+        axes = axes if isinstance(axes, np.ndarray) else [axes]
+    else:
+        axes = axes.flatten()
+    
+    # Crear un gráfico para cada target
+    for i, target_name in enumerate(target_names):
+        if i >= len(axes):
+            break
+            
+        ax = axes[i]
+        
+        # Datos del target actual
+        y_true_target = y_true[:, i]
+        y_pred_target = y_pred[:, i]
+        
+        # Obtener métricas del target
+        metrics = resultados_multioutput['por_target'][target_name]
+        
+        # Scatter plot con colores según el error
+        errors = np.abs(y_true_target - y_pred_target)
+        scatter = ax.scatter(y_true_target, y_pred_target, c=errors, cmap='viridis', 
+                           alpha=0.6, s=30, edgecolors='black', linewidth=0.5)
+        
+        # Línea diagonal perfecta
+        min_val = min(y_true_target.min(), y_pred_target.min())
+        max_val = max(y_true_target.max(), y_pred_target.max())
+        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, 
+               label='Predicción Perfecta', alpha=0.8)
+        
+        # Línea de tendencia
+        try:
+            z = np.polyfit(y_true_target, y_pred_target, 1)
+            p = np.poly1d(z)
+            ax.plot(y_true_target, p(y_true_target), 'g-', linewidth=2, alpha=0.8, 
+                   label=f'Tendencia (m={z[0]:.3f})')
+        except:
+            pass  # Si no se puede calcular la tendencia
+        
+        # Agregar texto con métricas
+        textstr = (f'R² = {metrics["R²"]:.4f}\n'
+                  f'RMSE = {metrics["RMSE"]:.4f}\n'
+                  f'MAE = {metrics["MAE"]:.4f}\n'
+                  f'N = {metrics["N_Muestras"]:,}')
+        
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+        ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=9,
+               verticalalignment='top', bbox=props)
+        
+        # Colorbar para el primer gráfico
+        if i == 0:
+            cbar = plt.colorbar(scatter, ax=ax)
+            cbar.set_label('Error Absoluto', rotation=270, labelpad=15)
+        
+        # Formato del gráfico
+        ax.set_xlabel('Valores Reales', fontsize=10)
+        ax.set_ylabel('Predicciones', fontsize=10)
+        ax.set_title(f'{target_name}', fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        
+        # Igualar aspectos para que la línea diagonal se vea como 45°
+        ax.set_aspect('equal', adjustable='box')
+        
+        # Leyenda solo en el primer gráfico para no saturar
+        if i == 0:
+            ax.legend(loc='lower right', fontsize=8)
+    
+    # Ocultar subplots vacíos
+    for i in range(n_targets, len(axes)):
+        axes[i].set_visible(False)
+    
+    # Ajustar layout
+    plt.tight_layout()
+    plt.show()
+    
+    # Mostrar resumen de gráficos generados
+    print(f"\n📊 Gráficos generados para {n_targets} targets:")
+    for i, target_name in enumerate(target_names):
+        metrics = resultados_multioutput['por_target'][target_name]
+        print(f"   • {target_name}: R² = {metrics['R²']:.4f}")
+
+
+def _graficar_multiple_modelos_multioutput(modelos_dict, figsize):
+    """
+    Genera gráficos comparativos para múltiples modelos multioutput.
+    Todas las predicciones de todas las estaciones en un mismo gráfico por modelo.
+    
+    Args:
+        modelos_dict: Dict con {nombre_modelo: (y_true, y_pred, target_names)}
+        figsize: Tamaño de la figura
+    """
+    
+    # Obtener información de los modelos
+    nombres_modelos = list(modelos_dict.keys())
+    n_modelos = len(nombres_modelos)
+    
+    # Obtener target_names del primer modelo
+    primer_modelo = list(modelos_dict.values())[0]
+    if len(primer_modelo) == 3:
+        _, _, target_names = primer_modelo
+    else:
+        y_true_sample, _ = primer_modelo
+        y_true_sample = np.asarray(y_true_sample)
+        if y_true_sample.ndim == 1:
+            y_true_sample = y_true_sample.reshape(-1, 1)
+        n_targets = y_true_sample.shape[1]
+        target_names = [f'target_{i}' for i in range(n_targets)]
+    
+    n_targets = len(target_names)
+    
+    # Calcular métricas para todos los modelos
+    resultados_modelos = {}
+    for nombre, datos in modelos_dict.items():
+        if len(datos) == 3:
+            y_true, y_pred, target_names_modelo = datos
+        else:
+            y_true, y_pred = datos
+            target_names_modelo = target_names
+        
+        # Calcular métricas
+        resultados = calcular_metricas_multioutput(y_true, y_pred, target_names_modelo, mostrar_resumen=False)
+        resultados_modelos[nombre] = {
+            'y_true': y_true,
+            'y_pred': y_pred,
+            'metricas': resultados
+        }
+    
+    # Configurar subplots: un gráfico por modelo
+    max_cols = min(3, n_modelos)  # Máximo 3 columnas
+    modelo_rows = (n_modelos + max_cols - 1) // max_cols
+    
+    # Crear figura con subplots
+    fig, axes = plt.subplots(modelo_rows, max_cols, figsize=figsize)
+    fig.suptitle('Predicciones vs Valores Reales - Todas las Estaciones (Multioutput)', 
+                 fontsize=16, fontweight='bold')
+    
+    # Manejar casos de diferentes dimensiones de axes
+    if n_modelos == 1:
+        axes = [axes]
+    elif modelo_rows == 1:
+        axes = axes if isinstance(axes, np.ndarray) else [axes]
+    else:
+        axes = axes.flatten()
+    
+    # Colores para cada target/estación
+    colors = plt.cm.Set3(np.linspace(0, 1, n_targets))
+    
+    # Graficar cada modelo
+    for modelo_idx, (nombre_modelo, datos_modelo) in enumerate(resultados_modelos.items()):
+        if modelo_idx >= len(axes):
+            break
+            
+        ax = axes[modelo_idx]
+        
+        # Obtener datos del modelo
+        y_true = np.asarray(datos_modelo['y_true'], dtype=np.float64)
+        y_pred = np.asarray(datos_modelo['y_pred'], dtype=np.float64)
+        
+        # Verificar dimensiones
+        if y_true.ndim == 1:
+            y_true = y_true.reshape(-1, 1)
+        if y_pred.ndim == 1:
+            y_pred = y_pred.reshape(-1, 1)
+        
+        # Combinar todas las predicciones en un solo gráfico
+        y_true_all = y_true.flatten()
+        y_pred_all = y_pred.flatten()
+        
+        # Crear colores por target/estación
+        target_colors = []
+        for i in range(y_true.shape[0]):  # por cada muestra
+            for j in range(n_targets):    # por cada target
+                target_colors.append(colors[j])
+        
+        # Scatter plot con colores por estación/target
+        scatter = ax.scatter(y_true_all, y_pred_all, c=target_colors, 
+                           alpha=0.6, s=15, edgecolors='black', linewidth=0.3)
+        
+        # Línea diagonal perfecta
+        min_val = min(y_true_all.min(), y_pred_all.min())
+        max_val = max(y_true_all.max(), y_pred_all.max())
+        ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, 
+               label='Predicción Perfecta', alpha=0.8)
+        
+        # Línea de tendencia
+        try:
+            z = np.polyfit(y_true_all, y_pred_all, 1)
+            p = np.poly1d(z)
+            ax.plot(y_true_all, p(y_true_all), 'black', linewidth=2, alpha=0.8, 
+                   label=f'Tendencia (m={z[0]:.3f})')
+        except:
+            pass
+        
+        # Calcular métricas globales
+        metricas_globales = datos_modelo['metricas']['globales']
+        metricas_agregadas = datos_modelo['metricas']['agregadas']
+        
+        # Agregar texto con métricas
+        textstr = (f'R²_global = {metricas_globales["R²_global"]:.3f}\n'
+                  f'R²_promedio = {metricas_agregadas["R²_promedio"]:.3f}\n'
+                  f'RMSE_global = {metricas_globales["RMSE_global"]:.3f}\n'
+                  f'MAE_global = {metricas_globales["MAE_global"]:.3f}\n'
+                  f'N_total = {metricas_globales["N_Muestras_total"]:,}\n'
+                  f'Estaciones = {n_targets}')
+        
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+        ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=9,
+               verticalalignment='top', bbox=props)
+        
+        # Formato del gráfico
+        ax.set_xlabel('Valores Reales', fontsize=11)
+        ax.set_ylabel('Predicciones', fontsize=11)
+        ax.set_title(f'{nombre_modelo}', fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='lower right', fontsize=8)
+        
+        # Igualar aspectos
+        ax.set_aspect('equal', adjustable='box')
+    
+    # Ocultar subplots vacíos
+    for i in range(n_modelos, len(axes)):
+        axes[i].set_visible(False)
+    
+    # Crear leyenda de colores para estaciones/targets
+    if n_targets <= 10:  # Solo mostrar leyenda si no hay demasiadas estaciones
+        handles = []
+        for i, target_name in enumerate(target_names):
+            handles.append(plt.Line2D([0], [0], marker='o', color='w', 
+                          markerfacecolor=colors[i], markersize=8, 
+                          label=f'{target_name}', alpha=0.8))
+        
+        fig.legend(handles=handles, loc='center right', bbox_to_anchor=(0.98, 0.5),
+                  title='Estaciones/Targets', fontsize=8)
+    
+    # Ajustar layout
+    plt.tight_layout()
+    plt.show()
+    
+    # Mostrar resumen consolidado
+    print(f"\n📊 Resumen de gráficos consolidados:")
+    print(f"   • {n_modelos} modelos graficados")
+    print(f"   • {n_targets} estaciones/targets por modelo")
+    print(f"   • Todas las predicciones en un gráfico por modelo")
+    
+    # Mostrar ranking general de modelos
+    print(f"\n🏆 Ranking general de modelos (por R²_global):")
+    ranking_global = []
+    for nombre_modelo, datos_modelo in resultados_modelos.items():
+        r2_global = datos_modelo['metricas']['globales']['R²_global']
+        r2_promedio = datos_modelo['metricas']['agregadas']['R²_promedio']
+        ranking_global.append((nombre_modelo, r2_global, r2_promedio))
+    
+    ranking_global.sort(key=lambda x: x[1], reverse=True)
+    for i, (modelo, r2_global, r2_promedio) in enumerate(ranking_global, 1):
+        print(f"   {i}. {modelo}: R²_global = {r2_global:.4f}, R²_promedio = {r2_promedio:.4f}")
+    
+    # Mostrar ranking por target individual
+    print(f"\n📈 Mejores modelos por estación/target:")
+    for target_name in target_names:
+        ranking_target = []
+        for nombre_modelo, datos_modelo in resultados_modelos.items():
+            r2 = datos_modelo['metricas']['por_target'][target_name]['R²']
+            ranking_target.append((nombre_modelo, r2))
+        
+        ranking_target.sort(key=lambda x: x[1], reverse=True)
+        mejor_modelo, mejor_r2 = ranking_target[0]
+        print(f"   • {target_name}: {mejor_modelo} (R² = {mejor_r2:.4f})")
+            
+def graficar_comparativa_modelos_multioutput(modelos_dict, figsize=(15, 10)):
+    """
+    Función de conveniencia para graficar comparativamente múltiples modelos multioutput.
+    
+    Args:
+        modelos_dict: Dict con {nombre_modelo: (y_true, y_pred, target_names)}
+        figsize: Tamaño de la figura
+    
+    Example:
+        predicciones_multi = {
+            'Linear Regression': (y_val_multi, pred_multi, target_names_train),
+            'Random Forest': (y_val_multi, pred_multi_rf, target_names_train),
+            'Gradient Boosting': (y_val_multi, pred_multi_gb, target_names_train)
+        }
+        graficar_comparativa_modelos_multioutput(predicciones_multi)
+    """
+    print(f"\n🎯 Iniciando comparativa gráfica de {len(modelos_dict)} modelos multioutput...")
+    _graficar_multioutput_predicciones(modelos_dict, figsize=figsize)
 

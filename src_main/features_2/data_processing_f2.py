@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-def filtrar_dataset_por_estaciones(df, estaciones_incluir, verbose=True):
+def filtrar_dataset_por_estaciones(df, estaciones_incluir, verbose=False):
     """
     Filtra el dataset para incluir solo las features de las estaciones especificadas.
     Agrega columnas totales para compensar las features excluidas.
@@ -228,97 +228,6 @@ def dividir_dataset_estacion(df, estacion_id, verbose=True):
     return X, y, feature_columns
 
 
-def dividir_dataset_multiples_estaciones(df, estaciones_ids, verbose=True):
-    """
-    Divide el dataset en X (features) e y (targets de múltiples estaciones).
-    
-    Args:
-        df (pd.DataFrame): DataFrame con features y targets
-        estaciones_ids (list): Lista de IDs de estaciones para extraer targets
-        verbose (bool): Si True, muestra información detallada del proceso
-    
-    Returns:
-        tuple: (X, y, feature_names, target_names)
-            - X: DataFrame con todas las features
-            - y: DataFrame con los targets de las estaciones especificadas
-            - feature_names: Lista con nombres de las features
-            - target_names: Lista con nombres de los targets
-    """
-    
-    # Identificar columnas target específicas
-    target_columns = []
-    for estacion_id in estaciones_ids:
-        target_col = f'target_estacion_{estacion_id}'
-        if target_col in df.columns:
-            target_columns.append(target_col)
-        else:
-            if verbose:
-                print(f"⚠️  Advertencia: {target_col} no encontrada")
-    
-    if not target_columns:
-        available_targets = [col for col in df.columns if col.startswith('target_')]
-        raise ValueError(f"Ningún target encontrado para las estaciones {estaciones_ids}. Targets disponibles: {available_targets}")
-    
-    # Identificar columnas de features
-    feature_columns = [col for col in df.columns if not col.startswith('target_')]
-    
-    # Crear X e y
-    X = df[feature_columns].copy()
-    y = df[target_columns].copy()
-    
-    # Procesar columnas temporales en X
-    # 1. Eliminar fecha_hora si existe
-    if 'fecha_hora' in X.columns:
-        X = X.drop('fecha_hora', axis=1)
-        feature_columns = [col for col in feature_columns if col != 'fecha_hora']
-        if verbose:
-            print("✓ Columna 'fecha_hora' eliminada")
-    
-    # 2. Convertir columnas de hora de hh:mm:ss a números 0-23
-    for col in X.columns:
-        if 'hora' in col.lower():
-            try:
-                # Intentar convertir de formato tiempo a hora numérica
-                X[col] = pd.to_datetime(X[col], format='%H:%M:%S').dt.hour
-                if verbose:
-                    print(f"✓ Columna '{col}' convertida de hh:mm:ss a hora (0-23)")
-            except:
-                try:
-                    # Segundo intento con formato más flexible
-                    X[col] = pd.to_datetime(X[col]).dt.hour
-                    if verbose:
-                        print(f"✓ Columna '{col}' convertida a hora (0-23)")
-                except:
-                    # Si no se puede convertir, mantener como está
-                    if verbose:
-                        print(f"⚠️ No se pudo convertir columna de tiempo '{col}'")
-    
-    # Actualizar feature_columns después del procesamiento
-    feature_columns = list(X.columns)
-    
-    if verbose:
-        print(f"=== DIVISIÓN DATASET MÚLTIPLES ESTACIONES ===")
-        print(f"Estaciones solicitadas: {estaciones_ids}")
-        print(f"Estaciones encontradas: {[int(col.split('_')[-1]) for col in target_columns]}")
-        print(f"Shape original: {df.shape}")
-        print(f"Features (X): {X.shape}")
-        print(f"Targets (y): {y.shape}")
-        
-        # Estadísticas de cada target
-        print(f"\n📊 ESTADÍSTICAS POR TARGET:")
-        for col in target_columns:
-            estacion = col.split('_')[-1]
-            target_data = y[col]
-            print(f"  Estación {estacion}:")
-            print(f"    - Rango: {target_data.min():.2f} - {target_data.max():.2f}")
-            print(f"    - Media: {target_data.mean():.2f}")
-            print(f"    - Valores nulos: {target_data.isnull().sum()}")
-            print(f"    - Valores cero: {(target_data == 0).sum()}")
-
-        estaciones_encontradas = [int(col.split('_')[-1]) for col in target_columns]
-        print(f"Dataset dividido múltiples estaciones {estaciones_encontradas}: X{X.shape}, y{y.shape}")
-    
-    return X, y, feature_columns, target_columns
 
 
 def obtener_targets_disponibles(df, verbose=False):
@@ -416,4 +325,108 @@ def crear_dataset_estacion_especifica(df, estacion_id, verbose=True):
         print(f"Creando dataset específico para estación {estacion_id}")
     
     return filtrar_dataset_por_estaciones(df, [estacion_id], verbose=verbose)
+
+def dividir_dataset_multiples_estaciones(df, estaciones_ids, verbose=False):
+    """
+    Divide el dataset en X (features) e y (targets múltiples de varias estaciones).
+    
+    Args:
+        df (pd.DataFrame): DataFrame con features y targets
+        estaciones_ids (list): Lista de IDs de estaciones para las cuales extraer targets
+        verbose (bool): Si True, muestra información detallada del proceso
+    
+    Returns:
+        tuple: (X, y, feature_names, target_names)
+            - X: DataFrame con todas las features (excluye columnas target_*)
+            - y: DataFrame con targets de las estaciones especificadas (formato vectorial)
+            - feature_names: Lista con nombres de las features
+            - target_names: Lista con nombres de las columnas target
+    """
+    
+    # Verificar que estaciones_ids sea una lista
+    if not isinstance(estaciones_ids, list):
+        estaciones_ids = [estaciones_ids]
+    
+    # Identificar las columnas target específicas
+    target_columns = []
+    missing_targets = []
+    
+    for estacion_id in estaciones_ids:
+        target_column = f'target_estacion_{estacion_id}'
+        if target_column in df.columns:
+            target_columns.append(target_column)
+        else:
+            missing_targets.append(estacion_id)
+    
+    # Verificar que al menos un target existe
+    if not target_columns:
+        available_targets = [col for col in df.columns if col.startswith('target_')]
+        raise ValueError(f"Ninguna columna target encontrada para estaciones {estaciones_ids}. Targets disponibles: {available_targets}")
+    
+    # Advertir sobre targets faltantes
+    if missing_targets and verbose:
+        print(f"⚠️ Estaciones sin target disponible: {missing_targets}")
+    
+    # Identificar columnas de features (todas excepto las que empiezan con 'target_')
+    feature_columns = [col for col in df.columns if not col.startswith('target_')]
+    
+    # Crear X e y
+    X = df[feature_columns].copy()
+    y = df[target_columns].copy()
+    
+    # Procesar columnas temporales en X
+    # 1. Eliminar fecha_hora si existe
+    if 'fecha_hora' in X.columns:
+        X = X.drop('fecha_hora', axis=1)
+        feature_columns = [col for col in feature_columns if col != 'fecha_hora']
+        if verbose:
+            print("✓ Columna 'fecha_hora' eliminada")
+    
+    # 2. Convertir columnas de hora de hh:mm:ss a números 0-23
+    for col in X.columns:
+        if 'hora' in col.lower():
+            try:
+                # Intentar convertir de formato tiempo a hora numérica
+                X[col] = pd.to_datetime(X[col], format='%H:%M:%S').dt.hour
+                if verbose:
+                    print(f"✓ Columna '{col}' convertida de hh:mm:ss a hora (0-23)")
+            except:
+                try:
+                    # Segundo intento con formato más flexible
+                    X[col] = pd.to_datetime(X[col]).dt.hour
+                    if verbose:
+                        print(f"✓ Columna '{col}' convertida a hora (0-23)")
+                except:
+                    # Si no se puede convertir, mantener como está
+                    if verbose:
+                        print(f"⚠️ No se pudo convertir columna de tiempo '{col}'")
+    
+    # Actualizar feature_columns después del procesamiento
+    feature_columns = list(X.columns)
+    target_names = list(y.columns)
+    
+    if verbose:
+        print(f"=== DIVISIÓN DATASET MÚLTIPLES ESTACIONES ===")
+        print(f"Estaciones solicitadas: {estaciones_ids}")
+        print(f"Estaciones incluidas: {[int(col.split('_')[-1]) for col in target_columns]}")
+        print(f"Shape original: {df.shape}")
+        print(f"Features (X): {X.shape}")
+        print(f"Targets (y): {y.shape}")
+        print(f"Target columnas: {target_columns}")
+        print(f"Features incluidos: {len(feature_columns)}")
+        
+        # Mostrar estadísticas de targets
+        print(f"\n📊 ESTADÍSTICAS DE TARGETS:")
+        for i, col in enumerate(target_columns):
+            estacion_id = col.split('_')[-1]
+            target_data = y[col]
+            print(f"  Estación {estacion_id}:")
+            print(f"    - Rango: {target_data.min():.2f} - {target_data.max():.2f}")
+            print(f"    - Media: {target_data.mean():.2f}")
+            print(f"    - Valores nulos: {target_data.isnull().sum()}")
+            print(f"    - Valores cero: {(target_data == 0).sum()}")
+        
+        print(f"\nDataset dividido múltiples estaciones: X{X.shape}, y{y.shape}")
+    
+    return X, y, feature_columns, target_names
 

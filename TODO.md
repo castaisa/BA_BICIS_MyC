@@ -18,11 +18,12 @@ TO DO VIEJO:
 
 DONE:
 - PCA
+- gráfico de las métricas vs cantidad de viajes que tenia esa estación
+
 
 IN PROGRESS:
 - modelo solo con el delta t anterior (isa)
 
 TO DO:
-- gráfico de las métricas vs cantidad de viajes que tenia esa estación
 - lo de predecir con vector
 - funcion que agarra features 2 y arma pero puede tener los targets de varias estaciones
