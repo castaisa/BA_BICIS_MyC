@@ -156,3 +156,40 @@ def graficar_metricas_vs_arribos(arribos_dict, mae_lista, r2_lista, rmse_lista, 
     
     return df
 
+def get_stations_id(df):
+    """
+    Extrae todos los IDs de estaciones de las columnas target_estacion_x del DataFrame.
+    
+    Args:
+        df: DataFrame con columnas que siguen el patrón 'target_estacion_x'
+    
+    Returns:
+        list: Lista de IDs de estaciones (int) ordenados de menor a mayor
+    
+    Example:
+        # Si el DataFrame tiene columnas: target_estacion_5, target_estacion_202, target_estacion_175
+        station_ids = get_stations_id(df)
+        # Retorna: [5, 175, 202]
+    """
+    # Filtrar columnas que siguen el patrón target_estacion_x
+    target_cols = [col for col in df.columns if col.startswith('target_estacion_')]
+    
+    # Extraer los IDs de estación de los nombres de columnas
+    station_ids = []
+    for col in target_cols:
+        try:
+            # Dividir por '_' y tomar el último elemento (el ID)
+            station_id = int(col.split('_')[-1])
+            station_ids.append(station_id)
+        except (ValueError, IndexError):
+            # Si no se puede convertir a int, ignorar esa columna
+            print(f"Warning: No se pudo extraer ID de estación de la columna '{col}'")
+            continue
+    
+    # Ordenar los IDs y remover duplicados
+    unique_sorted_ids = sorted(list(set(station_ids)))
+    
+    print(f"📊 Encontradas {len(unique_sorted_ids)} estaciones: {unique_sorted_ids[:5]}{'...' if len(unique_sorted_ids) > 5 else ''}")
+    
+    return unique_sorted_ids
+
