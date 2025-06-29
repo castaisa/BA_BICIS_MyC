@@ -895,6 +895,177 @@ def crear_tabla_metricas_multioutput(resultados_multioutput, formato='completo',
             'resumen': crear_tabla_metricas_multioutput(resultados_multioutput, 'agregadas')
         }
 
+def calcular_metricas_multioutput(y_true, y_pred, target_names=None, mostrar_resumen=True):
+    """
+    Calcula métricas completas para regresión multioutput.
+    
+    Args:
+        y_true: Valores reales (array 2D: muestras x targets)
+        y_pred: Valores predichos (array 2D: muestras x targets)
+        target_names: Lista de nombres de targets (opcional)
+        mostrar_resumen: Si mostrar resumen en consola
+    
+    Returns:
+        dict: Diccionario con métricas organizadas en 3 niveles:
+            - 'por_target': métricas individuales por target
+            - 'agregadas': métricas promediadas entre targets
+            - 'globales': métricas calculadas sobre todos los datos combinados
+            - 'target_names': nombres de los targets utilizados
+    """
+    
+    # Convertir a arrays numpy
+    y_true = np.asarray(y_true, dtype=np.float64)
+    y_pred = np.asarray(y_pred, dtype=np.float64)
+    
+    # Verificar y ajustar dimensiones
+    if y_true.ndim == 1:
+        y_true = y_true.reshape(-1, 1)
+    if y_pred.ndim == 1:
+        y_pred = y_pred.reshape(-1, 1)
+    
+    # Verificar compatibilidad de dimensiones
+    if y_true.shape != y_pred.shape:
+        raise ValueError(f"Las dimensiones no coinciden: y_true {y_true.shape} vs y_pred {y_pred.shape}")
+    
+    n_samples, n_targets = y_true.shape
+    
+    # Generar nombres de targets si no se proporcionan
+    if target_names is None:
+        target_names = [f'target_{i}' for i in range(n_targets)]
+    elif len(target_names) != n_targets:
+        raise ValueError(f"Número de target_names ({len(target_names)}) no coincide con número de targets ({n_targets})")
+    
+    # 1. MÉTRICAS POR TARGET INDIVIDUAL
+    metricas_por_target = {}
+    
+    for i, target_name in enumerate(target_names):
+        y_true_target = y_true[:, i]
+        y_pred_target = y_pred[:, i]
+        
+        # Usar la función existente calcular_metricas_regresion
+        metricas_target = calcular_metricas_regresion(y_true_target, y_pred_target)
+        metricas_por_target[target_name] = metricas_target
+    
+    # 2. MÉTRICAS AGREGADAS (promedio entre targets)
+    metricas_agregadas = {}
+    
+    # Lista de métricas a promediar
+    metricas_a_promediar = ['MAE', 'MSE', 'RMSE', 'R²', 'MAPE', 'Explained_Variance', 
+                           'Max_Error', 'Correlation', 'Bias', 'Relative_Error_%']
+    
+    for metrica in metricas_a_promediar:
+        valores = []
+        for target_metrics in metricas_por_target.values():
+            if metrica in target_metrics and np.isfinite(target_metrics[metrica]):
+                valores.append(target_metrics[metrica])
+        
+        if valores:
+            if metrica == 'Max_Error':
+                # Para Max_Error, usar el máximo entre todos los targets
+                metricas_agregadas[f'{metrica}_maximo'] = max(valores)
+                metricas_agregadas[f'{metrica}_promedio'] = np.mean(valores)
+            else:
+                # Para el resto, usar promedio
+                nombre_metrica = f'{metrica}_promedio' if metrica in ['R²', 'Correlation'] else f'{metrica}_promedio'
+                if metrica == 'R²':
+                    metricas_agregadas['R²_promedio'] = np.mean(valores)
+                elif metrica == 'Correlation':
+                    metricas_agregadas['Correlación_promedio'] = np.mean(valores)
+                else:
+                    metricas_agregadas[f'{metrica}_promedio'] = np.mean(valores)
+        else:
+            # Si no hay valores válidos
+            if metrica == 'R²':
+                metricas_agregadas['R²_promedio'] = np.nan
+            elif metrica == 'Correlation':
+                metricas_agregadas['Correlación_promedio'] = np.nan
+            else:
+                metricas_agregadas[f'{metrica}_promedio'] = np.nan
+    
+    # 3. MÉTRICAS GLOBALES (todos los datos como un solo vector)
+    y_true_flat = y_true.flatten()
+    y_pred_flat = y_pred.flatten()
+    
+    metricas_globales = {
+        'MAE_global': mean_absolute_error(y_true_flat, y_pred_flat),
+        'MSE_global': mean_squared_error(y_true_flat, y_pred_flat),
+        'RMSE_global': np.sqrt(mean_squared_error(y_true_flat, y_pred_flat)),
+        'R²_global': r2_score(y_true_flat, y_pred_flat),
+        'Correlación_global': np.corrcoef(y_true_flat, y_pred_flat)[0, 1] if len(y_true_flat) > 1 else np.nan,
+        'N_Muestras_total': len(y_true_flat),
+        'N_Targets': n_targets,
+        'N_Muestras_por_target': n_samples
+    }
+    
+    # MAPE global con manejo de división por cero
+    try:
+        metricas_globales['MAPE_global'] = mean_absolute_percentage_error(y_true_flat, y_pred_flat) * 100
+    except:
+        mask_nonzero = y_true_flat != 0
+        if np.any(mask_nonzero):
+            metricas_globales['MAPE_global'] = np.mean(np.abs((y_true_flat[mask_nonzero] - y_pred_flat[mask_nonzero]) / y_true_flat[mask_nonzero])) * 100
+        else:
+            metricas_globales['MAPE_global'] = np.inf
+    
+    # Bias global
+    metricas_globales['Bias_global'] = np.mean(y_pred_flat - y_true_flat)
+    
+    # Explained variance global
+    metricas_globales['Explained_Variance_global'] = explained_variance_score(y_true_flat, y_pred_flat)
+    
+    # 4. COMPILAR RESULTADOS
+    resultados_completos = {
+        'por_target': metricas_por_target,
+        'agregadas': metricas_agregadas,
+        'globales': metricas_globales,
+        'target_names': target_names
+    }
+    
+    # 5. MOSTRAR RESUMEN SI SE SOLICITA
+    if mostrar_resumen:
+        print(f"\n{'='*80}")
+        print("📊 MÉTRICAS MULTIOUTPUT - RESUMEN COMPLETO")
+        print(f"{'='*80}")
+        
+        print(f"\n🎯 CONFIGURACIÓN:")
+        print(f"   • Targets: {n_targets}")
+        print(f"   • Muestras por target: {n_samples:,}")
+        print(f"   • Muestras totales: {len(y_true_flat):,}")
+        
+        print(f"\n🏆 MÉTRICAS GLOBALES (todos los datos combinados):")
+        print(f"   • R²_global: {metricas_globales['R²_global']:.4f}")
+        print(f"   • RMSE_global: {metricas_globales['RMSE_global']:.4f}")
+        print(f"   • MAE_global: {metricas_globales['MAE_global']:.4f}")
+        print(f"   • MAPE_global: {metricas_globales['MAPE_global']:.2f}%")
+        print(f"   • Correlación_global: {metricas_globales['Correlación_global']:.4f}")
+        
+        print(f"\n📊 MÉTRICAS AGREGADAS (promedio entre targets):")
+        print(f"   • R²_promedio: {metricas_agregadas['R²_promedio']:.4f}")
+        print(f"   • RMSE_promedio: {metricas_agregadas['RMSE_promedio']:.4f}")
+        print(f"   • MAE_promedio: {metricas_agregadas['MAE_promedio']:.4f}")
+        print(f"   • MAPE_promedio: {metricas_agregadas['MAPE_promedio']:.2f}%")
+        print(f"   • Correlación_promedio: {metricas_agregadas['Correlación_promedio']:.4f}")
+        
+        print(f"\n📈 DESEMPEÑO POR TARGET:")
+        for target_name in target_names:
+            metrics = metricas_por_target[target_name]
+            print(f"   • {target_name}: R² = {metrics['R²']:.4f}, RMSE = {metrics['RMSE']:.4f}")
+        
+        # Identificar mejor y peor target
+        r2_por_target = [(name, metrics['R²']) for name, metrics in metricas_por_target.items()]
+        r2_por_target.sort(key=lambda x: x[1], reverse=True)
+        
+        mejor_target, mejor_r2 = r2_por_target[0]
+        peor_target, peor_r2 = r2_por_target[-1]
+        
+        print(f"\n🥇 MEJOR TARGET: {mejor_target} (R² = {mejor_r2:.4f})")
+        print(f"🔻 PEOR TARGET: {peor_target} (R² = {peor_r2:.4f})")
+        print(f"📏 RANGO R²: {mejor_r2 - peor_r2:.4f}")
+        
+        print(f"{'='*80}")
+    
+    return resultados_completos
+
 def comparar_metricas_modelos_multioutput(modelos_dict, mostrar_tabla=True, ordenar_por='R²_promedio'):
     """
     Compara métricas multioutput entre varios modelos y genera una tabla comparativa ordenada.
