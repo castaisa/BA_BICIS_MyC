@@ -31,8 +31,10 @@ def obtener_arribos_por_estacion(dataset):
     return dict(sorted(arribos_por_estacion.items()))
 
 
-def graficar_metricas_vs_arribos(arribos_dict, mae_lista, r2_lista, rmse_lista, mape_lista, 
-                                estaciones_ids, figsize=(20, 15)):
+def graficar_metricas_vs_arribos(
+    arribos_dict, mae_lista, r2_lista, rmse_lista, mape_lista, 
+    estaciones_ids, figsize=(20, 15), fontsize=20
+):
     """
     Grafica las métricas de rendimiento vs cantidad de arribos por estación.
     
@@ -44,6 +46,7 @@ def graficar_metricas_vs_arribos(arribos_dict, mae_lista, r2_lista, rmse_lista, 
         mape_lista: Lista con valores MAPE por estación
         estaciones_ids: Lista con IDs de estaciones (mismo orden que las métricas)
         figsize: Tamaño de la figura
+        fontsize: Tamaño de fuente base para los textos del gráfico
     """
     
     # Verificar que todas las listas tengan la misma longitud
@@ -72,8 +75,10 @@ def graficar_metricas_vs_arribos(arribos_dict, mae_lista, r2_lista, rmse_lista, 
     
     # Crear subplots
     fig, axes = plt.subplots(2, 2, figsize=figsize)
-    fig.suptitle('Métricas de Rendimiento vs Cantidad de Arribos por Estación', 
-                 fontsize=20, fontweight='bold')
+    fig.suptitle(
+        'Métricas de Rendimiento vs Cantidad de Arribos por Estación', 
+        fontsize=fontsize + 8, fontweight='bold'
+    )
     
     # Colores para cada métrica
     colors = {
@@ -86,56 +91,57 @@ def graficar_metricas_vs_arribos(arribos_dict, mae_lista, r2_lista, rmse_lista, 
     # Preparar datos para gráficos
     x_pos = np.arange(len(df))
     x_labels = [f"Est.{est}\n({arribos:,})" for est, arribos in zip(df['estacion_id'], df['arribos'])]
+    xtick_step = max(1, len(x_pos)//10)
     
     # 1. MSE vs Arribos
     ax1 = axes[0, 0]
-    scatter1 = ax1.scatter(x_pos, df['MAE'], c=colors['MAE'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
+    ax1.scatter(x_pos, df['MAE'], c=colors['MAE'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
     ax1.plot(x_pos, df['MAE'], color=colors['MAE'], alpha=0.3, linewidth=1)
-    ax1.set_title('MAE vs Arribos', fontweight='bold', fontsize=14)
-    ax1.set_ylabel('MAE', fontweight='bold', fontsize=12)
+    ax1.set_title('MAE vs Arribos', fontweight='bold', fontsize=fontsize + 2)
+    ax1.set_ylabel('MAE', fontweight='bold', fontsize=fontsize)
     ax1.grid(True, alpha=0.3)
-    ax1.set_xticks(x_pos[::max(1, len(x_pos)//10)])  # Mostrar cada 10 estaciones aprox
-    ax1.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), max(1, len(x_labels)//10))], 
-                       rotation=45, ha='right', fontsize=10)
-    ax1.tick_params(axis='y', labelsize=10)
+    ax1.set_xticks(x_pos[::xtick_step])
+    ax1.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), xtick_step)], 
+                        rotation=45, ha='right', fontsize=fontsize - 2)
+    ax1.tick_params(axis='y', labelsize=fontsize - 2)
     
     # 2. R² vs Arribos
     ax2 = axes[0, 1]
-    scatter2 = ax2.scatter(x_pos, df['R²'], c=colors['R²'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
+    ax2.scatter(x_pos, df['R²'], c=colors['R²'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
     ax2.plot(x_pos, df['R²'], color=colors['R²'], alpha=0.3, linewidth=1)
-    ax2.set_title('R² vs Arribos', fontweight='bold', fontsize=14)
-    ax2.set_ylabel('R²', fontweight='bold', fontsize=12)
+    ax2.set_title('R² vs Arribos', fontweight='bold', fontsize=fontsize + 2)
+    ax2.set_ylabel('R²', fontweight='bold', fontsize=fontsize)
     ax2.grid(True, alpha=0.3)
-    ax2.set_xticks(x_pos[::max(1, len(x_pos)//10)])
-    ax2.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), max(1, len(x_labels)//10))], 
-                       rotation=45, ha='right', fontsize=10)
-    ax2.tick_params(axis='y', labelsize=10)
+    ax2.set_xticks(x_pos[::xtick_step])
+    ax2.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), xtick_step)], 
+                        rotation=45, ha='right', fontsize=fontsize - 2)
+    ax2.tick_params(axis='y', labelsize=fontsize - 2)
     
     # 3. RMSE vs Arribos
     ax3 = axes[1, 0]
-    scatter3 = ax3.scatter(x_pos, df['RMSE'], c=colors['RMSE'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
+    ax3.scatter(x_pos, df['RMSE'], c=colors['RMSE'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
     ax3.plot(x_pos, df['RMSE'], color=colors['RMSE'], alpha=0.3, linewidth=1)
-    ax3.set_title('RMSE vs Arribos', fontweight='bold', fontsize=14)
-    ax3.set_ylabel('RMSE', fontweight='bold', fontsize=12)
-    ax3.set_xlabel('Estaciones (ordenadas por arribos)', fontweight='bold', fontsize=12)
+    ax3.set_title('RMSE vs Arribos', fontweight='bold', fontsize=fontsize + 2)
+    ax3.set_ylabel('RMSE', fontweight='bold', fontsize=fontsize)
+    ax3.set_xlabel('Estaciones (ordenadas por arribos)', fontweight='bold', fontsize=fontsize)
     ax3.grid(True, alpha=0.3)
-    ax3.set_xticks(x_pos[::max(1, len(x_pos)//10)])
-    ax3.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), max(1, len(x_labels)//10))], 
-                       rotation=45, ha='right', fontsize=10)
-    ax3.tick_params(axis='y', labelsize=10)
+    ax3.set_xticks(x_pos[::xtick_step])
+    ax3.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), xtick_step)], 
+                        rotation=45, ha='right', fontsize=fontsize - 2)
+    ax3.tick_params(axis='y', labelsize=fontsize - 2)
     
     # 4. MAPE vs Arribos
     ax4 = axes[1, 1]
-    scatter4 = ax4.scatter(x_pos, df['MAPE'], c=colors['MAPE'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
+    ax4.scatter(x_pos, df['MAPE'], c=colors['MAPE'], alpha=0.7, s=60, edgecolors='black', linewidth=0.5)
     ax4.plot(x_pos, df['MAPE'], color=colors['MAPE'], alpha=0.3, linewidth=1)
-    ax4.set_title('MAPE vs Arribos', fontweight='bold', fontsize=14)
-    ax4.set_ylabel('MAPE (%)', fontweight='bold', fontsize=12)
-    ax4.set_xlabel('Estaciones (ordenadas por arribos)', fontweight='bold', fontsize=12)
+    ax4.set_title('MAPE vs Arribos', fontweight='bold', fontsize=fontsize + 2)
+    ax4.set_ylabel('MAPE (%)', fontweight='bold', fontsize=fontsize)
+    ax4.set_xlabel('Estaciones (ordenadas por arribos)', fontweight='bold', fontsize=fontsize)
     ax4.grid(True, alpha=0.3)
-    ax4.set_xticks(x_pos[::max(1, len(x_pos)//10)])
-    ax4.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), max(1, len(x_labels)//10))], 
-                       rotation=45, ha='right', fontsize=10)
-    ax4.tick_params(axis='y', labelsize=10)
+    ax4.set_xticks(x_pos[::xtick_step])
+    ax4.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), xtick_step)], 
+                        rotation=45, ha='right', fontsize=fontsize - 2)
+    ax4.tick_params(axis='y', labelsize=fontsize - 2)
     
     # Ajustar layout
     plt.tight_layout()
