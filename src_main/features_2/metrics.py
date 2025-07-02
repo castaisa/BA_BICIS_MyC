@@ -539,6 +539,21 @@ def obtener_lista_metrica(y_true_lista, y_pred_lista, estaciones_ids, metrica='R
     
     return metricas['estaciones'], metricas[metrica]
 
+def obtener_metricas_individuales(y_true_lista, y_pred_lista, estaciones_ids):
+    """
+    Función que devuelve las métricas individuales como listas separadas.
+    
+    Returns:
+        tuple: (mae_vals, r2_vals, rmse_vals, mape_vals)
+    """
+    metricas_por_tipo = extraer_metricas_por_tipo(y_true_lista, y_pred_lista, estaciones_ids)
+    
+    mae_vals = metricas_por_tipo['MAE']
+    r2_vals = metricas_por_tipo['R²'] 
+    rmse_vals = metricas_por_tipo['RMSE']
+    mape_vals = metricas_por_tipo['MAPE']
+    
+    return mae_vals, r2_vals, rmse_vals, mape_vals
 
 def estadisticas_metricas_por_estacion(y_true_lista, y_pred_lista, estaciones_ids, 
                                        mostrar_tabla=True, exportar_csv=None):
