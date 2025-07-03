@@ -237,7 +237,10 @@ def unificar_datasets(df_recorridos, df_usuarios):
         if col not in df_usuarios.columns:
             print(df_usuarios.head())
             raise ValueError(f"Columna '{col}' no encontrada en dataset de usuarios")
-    
+
+    df_recorridos['id_usuario'] = df_recorridos['id_usuario'].astype(float).astype(int).astype(str)
+    df_usuarios['id_usuario'] = df_usuarios['id_usuario'].astype(str)
+
     # Convertir id_usuario a tipo consistente (string) en ambos datasets para evitar problemas de tipo
     df_recorridos['id_usuario'] = df_recorridos['id_usuario'].astype(str)
     df_usuarios['id_usuario'] = df_usuarios['id_usuario'].astype(str)
@@ -340,3 +343,98 @@ def remove_stations(df, removed_stations):
         print(sorted(actually_removed))
     
     return filtered_df
+
+import pandas as pd
+
+def limpiar_recorrido_individual(csv_path, cortar_fecha=None):
+    """
+    Limpia un solo archivo CSV de recorridos con la misma lógica que limpiar_recorridos.
+    
+    Parameters:
+    csv_path (str): Ruta al archivo CSV a limpiar
+    cortar_fecha (str, optional): Fecha límite en formato 'YYYY-MM-DD' para cortar el dataset.
+                                 Si es None, no aplica corte por fecha.
+    
+    Returns:
+    tuple: (DataFrame limpio, índices eliminados por fecha)
+    """
+    # Configuración común para lectura de CSV
+    read_csv_params = {
+        'index_col': False,  # Evita que se tome la primera columna como índice
+        'skipinitialspace': True,  # Elimina espacios después de separadores
+        'na_values': ['', ' '],  # Trata cadenas vacías como NaN
+        'keep_default_na': False  # Evita conversión de strings como 'NA' a NaN
+    }
+    
+    # Leer el archivo CSV
+    df = pd.read_csv(csv_path, **read_csv_params)
+    
+    # Determinar el año del archivo por el nombre del archivo o por los datos
+    año_archivo = None
+    if '2020' in csv_path:
+        año_archivo = 2020
+    elif '2021' in csv_path:
+        año_archivo = 2021
+    elif '2022' in csv_path:
+        año_archivo = 2022
+    elif '2023' in csv_path:
+        año_archivo = 2023
+    elif '2024' in csv_path:
+        año_archivo = 2024
+    
+    # Aplicar limpieza específica según el año
+    eliminated_indices = []
+    
+    # Fix para dataset 2021 - problema de columnas de género duplicadas
+    if año_archivo == 2021 and 'género' in df.columns and 'Género' in df.columns:
+        # Combinar las dos columnas de género
+        mask_genero_empty = (df['género'].isna()) | (df['género'] == 'NA') | (df['género'] == '')
+        mask_genero_cap_valid = (df['Género'].notna()) & (df['Género'] != 'NA') & (df['Género'] != '')
+        
+        df.loc[mask_genero_empty & mask_genero_cap_valid, 'género'] = df.loc[mask_genero_empty & mask_genero_cap_valid, 'Género']
+        df.drop(columns=['Género'], inplace=True)
+    
+    # Cortar por fecha si se especifica
+    if cortar_fecha is not None:
+        df, eliminated_indices = cut_recorridos(df, cortar_fecha)
+    
+    # Eliminar primera columna para años 2020-2023 (columna índice no deseada)
+    if año_archivo in [2020, 2021, 2022, 2023] and len(df.columns) > 0:
+        df.drop(df.columns[0], axis=1, inplace=True)
+    
+    # Estandarización de nombres de columnas
+    rename_dict = {
+        'Género': 'género',  # Para 2022
+        'genero': 'género',  # Para 2024
+        'id_recorrido': 'Id_recorrido'  # Para 2024
+    }
+    df.rename(columns=rename_dict, inplace=True)
+    
+    # Limpieza de prefijos BAEcobici para años 2020-2023
+    if año_archivo in [2020, 2021, 2022, 2023]:
+        cols_to_clean = ['Id_recorrido', 'id_estacion_origen', 'id_estacion_destino', 'id_usuario']
+        for col in cols_to_clean:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace('BAEcobici', '', regex=False)
+    
+    # Convertir columnas de estaciones a int
+    for col in ['id_estacion_destino', 'id_estacion_origen']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')
+    
+    # Convertir id_usuario a int
+    if 'id_usuario' in df.columns:
+        df['id_usuario'] = pd.to_numeric(df['id_usuario'], errors='coerce').astype('Int64')
+    
+    # Eliminar duplicados y posibles columnas fantasma
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    df = df.loc[:, ~df.columns.str.contains('^X$')]
+    df.drop_duplicates(inplace=True)
+    
+    # Limpieza final de espacios en blancos en nombres de columnas
+    df.columns = df.columns.str.strip()
+    
+    # Reset index después de toda la limpieza
+    df.reset_index(drop=True, inplace=True)
+    
+    return df, eliminated_indices
