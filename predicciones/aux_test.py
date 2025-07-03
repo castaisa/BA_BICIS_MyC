@@ -120,9 +120,16 @@
 def equiparar_columnas(ds_train_3, ds_val_3):
     print("🔄 Sincronizando columnas entre train y val...")
     
+    ds_train_3.columns = [str(col) for col in ds_train_3.columns]
+    ds_val_3.columns = [str(col) for col in ds_val_3.columns]
+    
     # Obtener columnas de features (sin targets)
-    train_feature_cols = set([col for col in ds_train_3.columns if not col.startswith('target_estacion_')])
-    val_feature_cols = set([col for col in ds_val_3.columns if not col.startswith('target_estacion_')])
+    train_feature_cols = set([col for col in ds_train_3.columns if not str(col).startswith('target_estacion_')])
+    val_feature_cols = set([col for col in ds_val_3.columns if not str(col).startswith('target_estacion_')])
+    
+    # # Obtener columnas de features (sin targets)
+    # train_feature_cols = set([col for col in ds_train_3.columns if not col.startswith('target_estacion_')])
+    # val_feature_cols = set([col for col in ds_val_3.columns if not col.startswith('target_estacion_')])
     
     # Obtener columnas de targets
     train_target_cols = set([col for col in ds_train_3.columns if col.startswith('target_estacion_')])
